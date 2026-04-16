@@ -21,6 +21,7 @@ public sealed partial class WorldRenderer : Node2D
     private const int ChunkBoundsLayerZ = 1536;
     private const int MaxEntitySortSpan = 1023;
     private static readonly ContentId DirtTerrainId = new("basegame:dirt");
+    private static readonly ContentId MountainTerrainId = new("basegame:mountain");
     private static readonly ContentId RiverWaterTerrainId = new("basegame:river_water");
 
     private readonly TextureContentLoader _textureLoader;
@@ -320,7 +321,7 @@ public sealed partial class WorldRenderer : Node2D
         {
             TerrainVisualKind.ShallowWater => RiverWaterTerrainId,
             TerrainVisualKind.DeepWater => RiverWaterTerrainId,
-            TerrainVisualKind.Mountain => DirtTerrainId,
+            TerrainVisualKind.Mountain => MountainTerrainId,
             _ => DirtTerrainId
         };
     }

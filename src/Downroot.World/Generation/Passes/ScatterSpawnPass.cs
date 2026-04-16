@@ -11,7 +11,9 @@ public sealed class ScatterSpawnPass(
     int width,
     int height,
     string? requiredSurfaceRegion,
-    int minSpacing) : IWorldGenPass
+    int minSpacing,
+    bool requireBuildable,
+    bool requireSupportsTrees) : IWorldGenPass
 {
     public string Name => WorldGenPassTypes.ScatterSpawn;
 
@@ -34,6 +36,17 @@ public sealed class ScatterSpawnPass(
             {
                 var coord = new LocalTileCoord(x, y);
                 if (requiredSurfaceRegion is not null && !context.HasSurfaceRegion(coord, requiredSurfaceRegion))
+                {
+                    continue;
+                }
+
+                var semantic = context.GetSurfaceSemantic(coord);
+                if (requireBuildable && !semantic.Buildable)
+                {
+                    continue;
+                }
+
+                if (requireSupportsTrees && !semantic.SupportsTrees)
                 {
                     continue;
                 }

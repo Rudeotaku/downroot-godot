@@ -36,9 +36,10 @@ public static class TerrainSemanticWorldSampler
         }
 
         var fields = SampleFields(worldSpaceKind, worldSeed, worldTile);
-        var visual = LegalizeVisual(worldSpaceKind, worldSeed, worldTile, fields);
-        var height = ResolveHeight(worldSpaceKind, worldSeed, worldTile, visual, fields.Roughness);
-        var shoreProfile = ResolveShoreProfile(worldSpaceKind, worldSeed, worldTile, visual);
+        var visual = SampleLegalizedVisual(worldSpaceKind, worldSeed, worldTile, fields);
+        var neighborVisuals = SampleLegalizedNeighborVisuals(worldSpaceKind, worldSeed, worldTile);
+        var height = ResolveHeight(visual, neighborVisuals, fields.Roughness);
+        var shoreProfile = ResolveShoreProfile(visual, neighborVisuals);
         return CreateSemantic(visual, height, shoreProfile);
     }
 
@@ -64,7 +65,12 @@ public static class TerrainSemanticWorldSampler
         };
     }
 
-    private static TerrainVisualKind LegalizeVisual(WorldSpaceKind worldSpaceKind, int worldSeed, WorldTileCoord worldTile, TerrainFields fields)
+    private static TerrainVisualKind SampleLegalizedVisual(WorldSpaceKind worldSpaceKind, int worldSeed, WorldTileCoord worldTile)
+    {
+        return SampleLegalizedVisual(worldSpaceKind, worldSeed, worldTile, SampleFields(worldSpaceKind, worldSeed, worldTile));
+    }
+
+    private static TerrainVisualKind SampleLegalizedVisual(WorldSpaceKind worldSpaceKind, int worldSeed, WorldTileCoord worldTile, TerrainFields fields)
     {
         var visual = SampleRawVisual(worldSpaceKind, worldSeed, worldTile, fields);
         var neighbors = AllNeighbors
@@ -90,6 +96,18 @@ public static class TerrainSemanticWorldSampler
         }
 
         return visual;
+    }
+
+    private static TerrainVisualKind[] SampleLegalizedNeighborVisuals(WorldSpaceKind worldSpaceKind, int worldSeed, WorldTileCoord worldTile)
+    {
+        var neighbors = new TerrainVisualKind[CardinalNeighbors.Length];
+        for (var index = 0; index < CardinalNeighbors.Length; index++)
+        {
+            var offset = CardinalNeighbors[index];
+            neighbors[index] = SampleLegalizedVisual(worldSpaceKind, worldSeed, new WorldTileCoord(worldTile.X + offset.X, worldTile.Y + offset.Y));
+        }
+
+        return neighbors;
     }
 
     private static TerrainVisualKind SampleRawVisual(WorldSpaceKind worldSpaceKind, int worldSeed, WorldTileCoord worldTile)
@@ -127,18 +145,18 @@ public static class TerrainSemanticWorldSampler
             : TerrainVisualKind.Dirt;
     }
 
-    private static HeightKind ResolveHeight(WorldSpaceKind worldSpaceKind, int worldSeed, WorldTileCoord worldTile, TerrainVisualKind visual, float roughness)
+    private static HeightKind ResolveHeight(TerrainVisualKind visual, IReadOnlyList<TerrainVisualKind> neighborVisuals, float roughness)
     {
         if (visual == TerrainVisualKind.Mountain)
         {
-            return HasNeighborMatching(worldSpaceKind, worldSeed, worldTile, neighbor =>
+            return neighborVisuals.Any(neighbor =>
                 TerrainVisualAdjacencyRules.GetAdjacencyRule(visual, neighbor) == AdjacencyRule.AllowedButSteep)
                 ? HeightKind.Cliff
                 : HeightKind.Raised;
         }
 
         if (visual is TerrainVisualKind.Dirt or TerrainVisualKind.Grass
-            && HasNeighborMatching(worldSpaceKind, worldSeed, worldTile, neighbor => neighbor == TerrainVisualKind.Mountain)
+            && neighborVisuals.Any(neighbor => neighbor == TerrainVisualKind.Mountain)
             && roughness >= 0.82f)
         {
             return HeightKind.Raised;
@@ -147,40 +165,26 @@ public static class TerrainSemanticWorldSampler
         return HeightKind.Low;
     }
 
-    private static ShoreProfileKind ResolveShoreProfile(WorldSpaceKind worldSpaceKind, int worldSeed, WorldTileCoord worldTile, TerrainVisualKind visual)
+    private static ShoreProfileKind ResolveShoreProfile(TerrainVisualKind visual, IReadOnlyList<TerrainVisualKind> neighborVisuals)
     {
         if (visual == TerrainVisualKind.DeepWater || visual == TerrainVisualKind.ShallowWater)
         {
             return ShoreProfileKind.None;
         }
 
-        if (HasNeighborMatching(worldSpaceKind, worldSeed, worldTile, neighbor =>
+        if (neighborVisuals.Any(neighbor =>
             TerrainVisualAdjacencyRules.GetAdjacencyRule(visual, neighbor) == AdjacencyRule.AllowedButSteep))
         {
             return ShoreProfileKind.Steep;
         }
 
-        if (HasNeighborMatching(worldSpaceKind, worldSeed, worldTile, neighbor =>
+        if (neighborVisuals.Any(neighbor =>
             neighbor is TerrainVisualKind.DeepWater or TerrainVisualKind.ShallowWater or TerrainVisualKind.Beach))
         {
             return ShoreProfileKind.Gentle;
         }
 
         return ShoreProfileKind.None;
-    }
-
-    private static bool HasNeighborMatching(WorldSpaceKind worldSpaceKind, int worldSeed, WorldTileCoord worldTile, Func<TerrainVisualKind, bool> predicate)
-    {
-        foreach (var offset in CardinalNeighbors)
-        {
-            var neighbor = SampleRawVisual(worldSpaceKind, worldSeed, new WorldTileCoord(worldTile.X + offset.X, worldTile.Y + offset.Y));
-            if (predicate(neighbor))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static SurfaceTileSemantic CreateSemantic(TerrainVisualKind visual, HeightKind height, ShoreProfileKind shoreProfile)

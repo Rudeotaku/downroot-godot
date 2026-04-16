@@ -26,7 +26,9 @@ public static class WorldGenPassFactory
                 definition.Width,
                 definition.Height,
                 definition.PrimarySurfaceRegion,
-                definition.MinSpacing),
+                definition.MinSpacing,
+                definition.RequireBuildable,
+                definition.RequireSupportsTrees),
             _ => throw new InvalidOperationException($"Unknown world gen pass type '{definition.PassType}' for '{definition.Id}'.")
         };
     }

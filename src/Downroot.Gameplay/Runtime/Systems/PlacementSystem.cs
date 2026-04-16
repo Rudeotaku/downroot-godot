@@ -1,4 +1,5 @@
 using Downroot.Core.Input;
+using Downroot.Core.World;
 
 namespace Downroot.Gameplay.Runtime.Systems;
 
@@ -25,6 +26,17 @@ public sealed class PlacementSystem(GameRuntime runtime, WorldRuntimeFacade worl
         }
 
         if (movementSystem.IsBlocked(tile))
+        {
+            return;
+        }
+
+        if (!worldFacade.TryGetChunkForTile(runtime.ActiveWorldSpaceKind, tileCoord, out var chunk, out var localCoord))
+        {
+            return;
+        }
+
+        var semantic = chunk.GeneratedChunk.Surface.GetSurfaceSemantic(localCoord.X, localCoord.Y);
+        if (!semantic.Buildable)
         {
             return;
         }

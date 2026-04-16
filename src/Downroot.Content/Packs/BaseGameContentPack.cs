@@ -26,6 +26,7 @@ public sealed class BaseGameContentPack : IContentPack
     {
         var grassId = new ContentId("basegame:grass");
         var dirtId = new ContentId("basegame:dirt");
+        var mountainId = new ContentId("basegame:mountain");
         var riverWaterId = new ContentId("basegame:river_water");
 
         var logItemId = new ContentId("basegame:log");
@@ -81,6 +82,7 @@ public sealed class BaseGameContentPack : IContentPack
 
         registrar.RegisterTerrain(new TerrainDef(grassId, "Grass", PackId, "packs/basegame/assets/world/terrain/ground/grass_dualgrid.png", 32, 32, 2, 1));
         registrar.RegisterTerrain(new TerrainDef(dirtId, "Dirt", PackId, "packs/basegame/assets/world/terrain/ground/dirt.png", 32, 32, 0, 0, 8, 4));
+        registrar.RegisterTerrain(new TerrainDef(mountainId, "Mountain", PackId, "packs/basegame/assets/world/nature/rocks/stone.png", 32, 32, 0, 0));
         registrar.RegisterTerrain(new TerrainDef(riverWaterId, "River Water", PackId, "packs/basegame/assets/world/terrain/ground/water_dualgrid.png", 32, 32, 2, 1));
 
         registrar.RegisterPlaceable(new PlaceableDef(furnacePlaceableId, "Furnace", PackId, "packs/basegame/assets/production/utility/furnace.png", 32, 32, 0, 0, 5, true, CraftingStationKind.Furnace, true, Behaviors: PlaceableBehaviorKind.CraftingStation));
@@ -263,8 +265,8 @@ public sealed class BaseGameContentPack : IContentPack
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:raised-goldvein"), WorldGenPassTypes.RaisedOreField, goldveinRaisedId, WorldSpaceKind.Overworld));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:raised-venomite"), WorldGenPassTypes.RaisedOreField, venomiteRaisedId, WorldSpaceKind.Overworld));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:overworld-rock-outcrop"), WorldGenPassTypes.RockOutcrop, rockOutcropNodeId, WorldSpaceKind.Overworld));
-        registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-trees"), WorldGenPassTypes.ScatterSpawn, treeNodeId, WorldSpaceKind.Overworld, 14, 0, 0, 28, 18, SurfaceRegions.GrassField, 3));
-        registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-berries"), WorldGenPassTypes.ScatterSpawn, blueberryNodeId, WorldSpaceKind.Overworld, 8, 0, 0, 28, 18, SurfaceRegions.GrassField, 2));
+        registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-trees"), WorldGenPassTypes.ScatterSpawn, treeNodeId, WorldSpaceKind.Overworld, 14, 0, 0, 28, 18, SurfaceRegions.GrassField, 3, RequireSupportsTrees: true));
+        registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-berries"), WorldGenPassTypes.ScatterSpawn, blueberryNodeId, WorldSpaceKind.Overworld, 8, 0, 0, 28, 18, SurfaceRegions.GrassField, 2, RequireSupportsTrees: true));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-stones"), WorldGenPassTypes.ScatterSpawn, stoneNodeId, WorldSpaceKind.Overworld, 10, 0, 0, 28, 18, SurfaceRegions.DirtField, 2));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-worms"), WorldGenPassTypes.ScatterSpawn, wormId, WorldSpaceKind.Overworld, 3, 0, 0, 28, 18, SurfaceRegions.DirtField, 5));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-cockroaches"), WorldGenPassTypes.ScatterSpawn, cockroachId, WorldSpaceKind.Overworld, 4, 0, 0, 28, 18, SurfaceRegions.GrassField, 5));

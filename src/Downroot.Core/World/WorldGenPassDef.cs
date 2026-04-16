@@ -13,4 +13,6 @@ public sealed record WorldGenPassDef(
     int Width = 0,
     int Height = 0,
     string? PrimarySurfaceRegion = null,
-    int MinSpacing = 0);
+    int MinSpacing = 0,
+    bool RequireBuildable = false,
+    bool RequireSupportsTrees = false);
