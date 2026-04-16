@@ -22,6 +22,8 @@ public interface IWorldGenContext
     void ClearRaisedFeature(LocalTileCoord coord);
     bool HasRaisedFeature(LocalTileCoord coord);
     void SetRaisedFeatureVariantIndex(LocalTileCoord coord, byte index);
+    SurfaceTileSemantic GetSurfaceSemantic(LocalTileCoord coord);
+    void SetSurfaceSemantic(LocalTileCoord coord, SurfaceTileSemantic semantic);
     string GetSurfaceRegion(LocalTileCoord coord);
     bool HasSurfaceRegion(LocalTileCoord coord, string regionKey);
     void SetSurfaceRegion(LocalTileCoord coord, string regionKey);

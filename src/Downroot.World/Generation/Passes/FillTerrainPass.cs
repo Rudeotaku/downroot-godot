@@ -22,6 +22,7 @@ public sealed class FillTerrainPass(ContentId terrainId, string surfaceRegion) :
                 context.SetBaseTerrain(coord, terrainId);
                 context.SetCoverTerrain(coord, null);
                 context.SetSurfaceRegion(coord, surfaceRegion);
+                context.SetSurfaceSemantic(coord, SurfaceSemanticDefaults.CreateForRegion(context.WorldSpaceKind, surfaceRegion));
             }
         }
     }

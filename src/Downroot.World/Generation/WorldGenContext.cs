@@ -72,6 +72,10 @@ public sealed class WorldGenContext(
 
     public void SetRaisedFeatureVariantIndex(LocalTileCoord coord, byte index) => surface.SetRaisedFeatureVariantIndex(coord.X, coord.Y, index);
 
+    public SurfaceTileSemantic GetSurfaceSemantic(LocalTileCoord coord) => surface.GetSurfaceSemantic(coord.X, coord.Y);
+
+    public void SetSurfaceSemantic(LocalTileCoord coord, SurfaceTileSemantic semantic) => surface.SetSurfaceSemantic(coord.X, coord.Y, semantic);
+
     public string GetSurfaceRegion(LocalTileCoord coord) => surface.GetSurfaceRegion(coord.X, coord.Y);
 
     public bool HasSurfaceRegion(LocalTileCoord coord, string regionKey) => surface.HasSurfaceRegion(coord.X, coord.Y, regionKey);

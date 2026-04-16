@@ -27,6 +27,7 @@ public sealed class RiverPass(ContentId riverTerrainId) : IWorldGenPass
 
                 context.SetCoverTerrain(local, riverTerrainId);
                 context.SetSurfaceRegion(local, SurfaceRegions.River);
+                context.SetSurfaceSemantic(local, SurfaceSemanticDefaults.CreateForRegion(context.WorldSpaceKind, SurfaceRegions.River));
             }
         }
     }

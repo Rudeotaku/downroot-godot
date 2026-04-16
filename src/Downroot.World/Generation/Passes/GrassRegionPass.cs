@@ -29,6 +29,7 @@ public sealed class GrassRegionPass(ContentId terrainId) : IWorldGenPass
                 {
                     context.SetCoverTerrain(coord, terrainId);
                     context.SetSurfaceRegion(coord, SurfaceRegions.GrassField);
+                    context.SetSurfaceSemantic(coord, SurfaceSemanticDefaults.CreateForRegion(context.WorldSpaceKind, SurfaceRegions.GrassField));
                 }
                 else
                 {
@@ -36,6 +37,7 @@ public sealed class GrassRegionPass(ContentId terrainId) : IWorldGenPass
                     if (context.GetBaseTerrain(coord) is not null)
                     {
                         context.SetSurfaceRegion(coord, SurfaceRegions.DirtField);
+                        context.SetSurfaceSemantic(coord, SurfaceSemanticDefaults.CreateForRegion(context.WorldSpaceKind, SurfaceRegions.DirtField));
                     }
                 }
             }

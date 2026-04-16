@@ -21,8 +21,6 @@ public sealed partial class WorldRenderer : Node2D
     private const int ChunkBoundsLayerZ = 1536;
     private const int MaxEntitySortSpan = 1023;
     private const string GrassTerrainId = "basegame:grass";
-    private const string GrassDualGridTexturePath = "packs/basegame/assets/world/terrain/ground/grass_dualgrid.png";
-    private const string GrassDualGridTextureId = "basegame:grass_dualgrid";
 
     private readonly TextureContentLoader _textureLoader;
     private readonly PlayerAnimationFactory _animationFactory;
@@ -36,7 +34,7 @@ public sealed partial class WorldRenderer : Node2D
 
     private GameRuntime? _runtime;
     private WorldRuntimeFacade? _worldFacade;
-    private CoverDualGridSampler? _coverDualGridSampler;
+    private SurfaceSemanticSampler? _surfaceSemanticSampler;
     private Node2D? _terrainLayer;
     private Node2D? _entityLayer;
     private CharacterBody2D? _playerBody;
@@ -59,7 +57,7 @@ public sealed partial class WorldRenderer : Node2D
     {
         _runtime = runtime;
         _worldFacade = new WorldRuntimeFacade(runtime);
-        _coverDualGridSampler = new CoverDualGridSampler(_worldFacade, runtime);
+        _surfaceSemanticSampler = new SurfaceSemanticSampler(_worldFacade, runtime);
         _terrainLayer = new Node2D { Name = "TerrainLayer", ZIndex = TerrainLayerZ };
         _entityLayer = new Node2D { Name = "EntityLayer" };
         AddChild(_terrainLayer);
@@ -137,9 +135,12 @@ public sealed partial class WorldRenderer : Node2D
             _ = ResolveTerrainTexture(terrain, terrain.AtlasColumn, terrain.AtlasRow);
         }
 
-        for (var variantIndex = CoverDualGridResolver.Empty; variantIndex <= CoverDualGridResolver.Full; variantIndex++)
+        foreach (var layerDef in DualGridLayerCatalog.All)
         {
-            _ = ResolveGrassDualGridTexture(variantIndex);
+            for (var variantIndex = CoverDualGridResolver.Empty; variantIndex <= CoverDualGridResolver.Full; variantIndex++)
+            {
+                _ = ResolveDualGridTerrainTexture(layerDef, variantIndex);
+            }
         }
 
         foreach (var item in runtime.Content.Items.All)
@@ -274,6 +275,12 @@ public sealed partial class WorldRenderer : Node2D
 
     private void BuildChunkTerrain(Downroot.World.Models.GeneratedChunk chunk, ChunkVisualState visual)
     {
+        BuildChunkTerrainBase(chunk, visual);
+        BuildChunkDualGridTerrainLayers(chunk, visual);
+    }
+
+    private void BuildChunkTerrainBase(Downroot.World.Models.GeneratedChunk chunk, ChunkVisualState visual)
+    {
         var chunkOriginTile = WorldTileCoord.FromChunkAndLocal(chunk.Coord, new LocalTileCoord(0, 0), _runtime!.ChunkWidth, _runtime.ChunkHeight);
         for (var y = 0; y < chunk.Surface.Height; y++)
         {
@@ -303,8 +310,6 @@ public sealed partial class WorldRenderer : Node2D
                 visual.CoverTerrainSprites[worldTile] = coverSprite;
             }
         }
-
-        BuildChunkGrassDualGridCover(chunk, visual);
     }
 
     private Sprite2D CreateTerrainSprite(string name, WorldTileCoord worldTile, TerrainDef terrainDef, int zIndex)
@@ -321,44 +326,59 @@ public sealed partial class WorldRenderer : Node2D
         };
     }
 
-    private void BuildChunkGrassDualGridCover(Downroot.World.Models.GeneratedChunk chunk, ChunkVisualState visual)
+    private void BuildChunkDualGridTerrainLayers(Downroot.World.Models.GeneratedChunk chunk, ChunkVisualState visual)
     {
-        var grassId = new ContentId(GrassTerrainId);
+        BuildChunkDualGridLayer(chunk, visual, DualGridLayerCatalog.DeepWater, visual.DeepWaterSprites);
+        BuildChunkDualGridLayer(chunk, visual, DualGridLayerCatalog.Beach, visual.BeachSprites);
+        BuildChunkDualGridLayer(chunk, visual, DualGridLayerCatalog.Grass, visual.GrassSprites);
+    }
+
+    private void BuildChunkDualGridLayer(
+        Downroot.World.Models.GeneratedChunk chunk,
+        ChunkVisualState visual,
+        DualGridLayerDef layerDef,
+        Dictionary<WorldTileCoord, Sprite2D> spriteBucket)
+    {
         var chunkOriginTile = WorldTileCoord.FromChunkAndLocal(chunk.Coord, new LocalTileCoord(0, 0), _runtime!.ChunkWidth, _runtime.ChunkHeight);
         for (var y = 0; y < chunk.Surface.Height; y++)
         {
             for (var x = 0; x < chunk.Surface.Width; x++)
             {
                 var displayTile = new WorldTileCoord(chunkOriginTile.X + x, chunkOriginTile.Y + y);
-                var topLeft = _coverDualGridSampler!.HasCover(new WorldTileCoord(displayTile.X - 1, displayTile.Y - 1), grassId);
-                var topRight = _coverDualGridSampler.HasCover(new WorldTileCoord(displayTile.X, displayTile.Y - 1), grassId);
-                var bottomLeft = _coverDualGridSampler.HasCover(new WorldTileCoord(displayTile.X - 1, displayTile.Y), grassId);
-                var bottomRight = _coverDualGridSampler.HasCover(displayTile, grassId);
+                var topLeft = OwnsDualGridVisual(new WorldTileCoord(displayTile.X - 1, displayTile.Y - 1), layerDef.VisualKind);
+                var topRight = OwnsDualGridVisual(new WorldTileCoord(displayTile.X, displayTile.Y - 1), layerDef.VisualKind);
+                var bottomLeft = OwnsDualGridVisual(new WorldTileCoord(displayTile.X - 1, displayTile.Y), layerDef.VisualKind);
+                var bottomRight = OwnsDualGridVisual(displayTile, layerDef.VisualKind);
                 var variantIndex = CoverDualGridResolver.ResolveVariantIndex(topLeft, topRight, bottomLeft, bottomRight);
                 if (variantIndex == CoverDualGridResolver.Empty)
                 {
                     continue;
                 }
 
-                var sprite = CreateGrassTransitionSprite(displayTile, variantIndex);
+                var sprite = CreateDualGridTerrainSprite(displayTile, layerDef, variantIndex);
                 visual.TerrainRoot.AddChild(sprite);
-                visual.CoverTerrainSprites[displayTile] = sprite;
+                spriteBucket[displayTile] = sprite;
             }
         }
     }
 
-    private Sprite2D CreateGrassTransitionSprite(WorldTileCoord displayTile, int variantIndex)
+    private bool OwnsDualGridVisual(WorldTileCoord tile, TerrainVisualKind visualKind)
+    {
+        return _surfaceSemanticSampler!.HasVisual(tile, visualKind);
+    }
+
+    private Sprite2D CreateDualGridTerrainSprite(WorldTileCoord displayTile, DualGridLayerDef layerDef, int variantIndex)
     {
         return new Sprite2D
         {
-            Name = $"GrassDualGrid_{displayTile.X}_{displayTile.Y}",
+            Name = $"{layerDef.VisualKind}_{displayTile.X}_{displayTile.Y}",
             Centered = false,
-            Texture = ResolveGrassDualGridTexture(variantIndex),
+            Texture = ResolveDualGridTerrainTexture(layerDef, variantIndex),
             Position = new Vector2(
                 (displayTile.X * TileSize) - (TileSize * 0.5f),
                 (displayTile.Y * TileSize) - (TileSize * 0.5f)),
             Modulate = ResolveTileBrightnessColor(displayTile),
-            ZIndex = 1
+            ZIndex = layerDef.RenderOrder
         };
     }
 
@@ -613,14 +633,14 @@ public sealed partial class WorldRenderer : Node2D
             () => _textureLoader.LoadTerrain(terrainDef, atlasColumn, atlasRow).Texture);
     }
 
-    private Texture2D ResolveGrassDualGridTexture(int variantIndex)
+    private Texture2D ResolveDualGridTerrainTexture(DualGridLayerDef layerDef, int variantIndex)
     {
         return ResolveCachedTexture(
-            $"grass-dualgrid:{variantIndex}",
+            $"dualgrid:{layerDef.TextureId}:{variantIndex}",
             () =>
             {
-                var texture = _textureLoader.LoadTexture(GrassDualGridTextureId, GrassDualGridTexturePath);
-                var (atlasColumn, atlasRow) = ResolveGrassDualGridAtlasCoords(variantIndex);
+                var texture = _textureLoader.LoadTexture(layerDef.TextureId, layerDef.TexturePath);
+                var (atlasColumn, atlasRow) = ResolveDualGridTerrainAtlasCoords(variantIndex);
                 return new AtlasTexture
                 {
                     Atlas = texture.Texture,
@@ -629,7 +649,7 @@ public sealed partial class WorldRenderer : Node2D
             });
     }
 
-    private static (int AtlasColumn, int AtlasRow) ResolveGrassDualGridAtlasCoords(int variantIndex)
+    private static (int AtlasColumn, int AtlasRow) ResolveDualGridTerrainAtlasCoords(int variantIndex)
     {
         return variantIndex switch
         {
@@ -820,6 +840,21 @@ public sealed partial class WorldRenderer : Node2D
             }
 
             foreach (var pair in visual.CoverTerrainSprites)
+            {
+                pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key);
+            }
+
+            foreach (var pair in visual.DeepWaterSprites)
+            {
+                pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key);
+            }
+
+            foreach (var pair in visual.BeachSprites)
+            {
+                pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key);
+            }
+
+            foreach (var pair in visual.GrassSprites)
             {
                 pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key);
             }
@@ -1067,10 +1102,13 @@ public sealed partial class WorldRenderer : Node2D
         Node2D BoundsRoot,
         Dictionary<WorldTileCoord, Sprite2D> BaseTerrainSprites,
         Dictionary<WorldTileCoord, Sprite2D> CoverTerrainSprites,
+        Dictionary<WorldTileCoord, Sprite2D> DeepWaterSprites,
+        Dictionary<WorldTileCoord, Sprite2D> BeachSprites,
+        Dictionary<WorldTileCoord, Sprite2D> GrassSprites,
         Dictionary<WorldTileCoord, Sprite2D> RaisedSprites)
     {
         public ChunkVisualState(Node2D terrainRoot, Node2D raisedFeatureRoot, Node2D entityRoot, Node2D boundsRoot)
-            : this(terrainRoot, raisedFeatureRoot, entityRoot, boundsRoot, [], [], [])
+            : this(terrainRoot, raisedFeatureRoot, entityRoot, boundsRoot, [], [], [], [], [], [])
         {
         }
     }
