@@ -47,6 +47,12 @@ public sealed class MovementSystem(GameRuntime runtime, WorldRuntimeFacade world
     public bool IsBlocked(Vector2 position, EntityId? ignoreEntityId = null)
     {
         var tile = worldFacade.GetWorldTile(position);
+        var surfaceSemantic = worldFacade.SampleSurfaceSemantic(runtime.ActiveWorldSpaceKind, tile);
+        if (surfaceSemantic.Surface is SurfaceGameplayKind.SolidRock or SurfaceGameplayKind.Water)
+        {
+            return true;
+        }
+
         var world = worldFacade.GetActiveWorld();
         var raisedFeatureId = world.GetRaisedFeatureId(tile, runtime.ChunkWidth, runtime.ChunkHeight);
         if (raisedFeatureId is not null)

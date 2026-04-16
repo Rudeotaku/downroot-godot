@@ -49,6 +49,17 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
         return GetWorld(worldSpaceKind).TryGetChunkForTile(tile, runtime.ChunkWidth, runtime.ChunkHeight, out chunk, out localCoord);
     }
 
+    public SurfaceTileSemantic SampleSurfaceSemantic(WorldSpaceKind worldSpaceKind, WorldTileCoord tile)
+    {
+        if (TryGetChunkForTile(worldSpaceKind, tile, out var chunk, out var localCoord))
+        {
+            return chunk.GeneratedChunk.Surface.GetSurfaceSemantic(localCoord.X, localCoord.Y);
+        }
+
+        var world = GetWorld(worldSpaceKind);
+        return TerrainSemanticWorldSampler.SampleSemantic(world.WorldSpaceKind, world.WorldSeed, tile);
+    }
+
     public ContentId? GetRaisedFeatureId(WorldSpaceKind worldSpaceKind, WorldTileCoord tile)
     {
         return GetWorld(worldSpaceKind).GetRaisedFeatureId(tile, runtime.ChunkWidth, runtime.ChunkHeight);
