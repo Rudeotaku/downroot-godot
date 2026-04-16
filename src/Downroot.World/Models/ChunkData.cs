@@ -23,9 +23,9 @@ public sealed class ChunkData
     public int Width { get; }
     public int Height { get; }
 
-    public ContentId? GetTerrainId(int x, int y) => _cells[x, y].ResolvedTerrainId;
-
     public ContentId? GetBaseTerrainId(int x, int y) => _cells[x, y].BaseTerrainId;
+
+    public ContentId? GetCoverTerrainId(int x, int y) => _cells[x, y].CoverTerrainId;
 
     public ContentId? GetRaisedFeatureId(int x, int y) => _cells[x, y].RaisedFeatureId;
 

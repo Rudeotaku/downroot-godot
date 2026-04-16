@@ -263,28 +263,44 @@ public sealed partial class WorldRenderer : Node2D
 
     private void BuildChunkTerrain(Downroot.World.Models.GeneratedChunk chunk, ChunkVisualState visual)
     {
-        var terrainRoot = visual.TerrainRoot;
         var chunkOriginTile = WorldTileCoord.FromChunkAndLocal(chunk.Coord, new LocalTileCoord(0, 0), _runtime!.ChunkWidth, _runtime.ChunkHeight);
         for (var y = 0; y < chunk.Surface.Height; y++)
         {
             for (var x = 0; x < chunk.Surface.Width; x++)
             {
-                var terrainId = chunk.Surface.GetTerrainId(x, y) ?? _runtime.BootstrapConfig.DefaultTerrainId;
-                var terrainDef = _runtime.Content.Terrains.Get(terrainId);
                 var worldTile = new WorldTileCoord(chunkOriginTile.X + x, chunkOriginTile.Y + y);
-                var (atlasColumn, atlasRow) = ResolveTerrainVariant(terrainDef, worldTile);
-                var sprite = new Sprite2D
+                var baseTerrainId = chunk.Surface.GetBaseTerrainId(x, y) ?? _runtime.BootstrapConfig.DefaultTerrainId;
+                var baseTerrainDef = _runtime.Content.Terrains.Get(baseTerrainId);
+                var baseSprite = CreateTerrainSprite($"BaseTerrain_{x}_{y}", worldTile, baseTerrainDef, 0);
+                visual.TerrainRoot.AddChild(baseSprite);
+                visual.BaseTerrainSprites[worldTile] = baseSprite;
+
+                var coverTerrainId = chunk.Surface.GetCoverTerrainId(x, y);
+                if (coverTerrainId is null)
                 {
-                    Name = $"Terrain_{x}_{y}",
-                    Centered = false,
-                    Texture = ResolveTerrainTexture(terrainDef, atlasColumn, atlasRow),
-                    Position = new Vector2(worldTile.X * TileSize, worldTile.Y * TileSize),
-                    Modulate = ResolveTileBrightnessColor(worldTile)
-                };
-                terrainRoot.AddChild(sprite);
-                visual.TerrainSprites[worldTile] = sprite;
+                    continue;
+                }
+
+                var coverTerrainDef = _runtime.Content.Terrains.Get(coverTerrainId.Value);
+                var coverSprite = CreateTerrainSprite($"CoverTerrain_{x}_{y}", worldTile, coverTerrainDef, 1);
+                visual.TerrainRoot.AddChild(coverSprite);
+                visual.CoverTerrainSprites[worldTile] = coverSprite;
             }
         }
+    }
+
+    private Sprite2D CreateTerrainSprite(string name, WorldTileCoord worldTile, TerrainDef terrainDef, int zIndex)
+    {
+        var (atlasColumn, atlasRow) = ResolveTerrainVariant(terrainDef, worldTile);
+        return new Sprite2D
+        {
+            Name = name,
+            Centered = false,
+            Texture = ResolveTerrainTexture(terrainDef, atlasColumn, atlasRow),
+            Position = new Vector2(worldTile.X * TileSize, worldTile.Y * TileSize),
+            Modulate = ResolveTileBrightnessColor(worldTile),
+            ZIndex = zIndex
+        };
     }
 
     private void BuildChunkRaisedFeatures(ChunkRuntimeState chunk, ChunkVisualState visual)
@@ -699,7 +715,12 @@ public sealed partial class WorldRenderer : Node2D
     {
         foreach (var visual in _chunkVisuals.Values)
         {
-            foreach (var pair in visual.TerrainSprites)
+            foreach (var pair in visual.BaseTerrainSprites)
+            {
+                pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key);
+            }
+
+            foreach (var pair in visual.CoverTerrainSprites)
             {
                 pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key);
             }
@@ -933,11 +954,12 @@ public sealed partial class WorldRenderer : Node2D
         Node2D RaisedFeatureRoot,
         Node2D EntityRoot,
         Node2D BoundsRoot,
-        Dictionary<WorldTileCoord, Sprite2D> TerrainSprites,
+        Dictionary<WorldTileCoord, Sprite2D> BaseTerrainSprites,
+        Dictionary<WorldTileCoord, Sprite2D> CoverTerrainSprites,
         Dictionary<WorldTileCoord, Sprite2D> RaisedSprites)
     {
         public ChunkVisualState(Node2D terrainRoot, Node2D raisedFeatureRoot, Node2D entityRoot, Node2D boundsRoot)
-            : this(terrainRoot, raisedFeatureRoot, entityRoot, boundsRoot, [], [])
+            : this(terrainRoot, raisedFeatureRoot, entityRoot, boundsRoot, [], [], [])
         {
         }
     }

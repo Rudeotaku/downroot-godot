@@ -9,6 +9,4 @@ public sealed class SurfaceCell
     public ContentId? RaisedFeatureId { get; set; }
     public byte RaisedFeatureVariantIndex { get; set; }
     public string SurfaceRegion { get; set; } = string.Empty;
-
-    public ContentId? ResolvedTerrainId => CoverTerrainId ?? BaseTerrainId;
 }

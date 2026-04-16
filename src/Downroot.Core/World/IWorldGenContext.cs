@@ -14,7 +14,7 @@ public interface IWorldGenContext
     float GetStableUnitValue(WorldTileCoord coord, int salt);
     bool HasTerrain(ContentId contentId);
     ContentId? GetBaseTerrain(LocalTileCoord coord);
-    ContentId? GetTerrain(LocalTileCoord coord);
+    ContentId? GetCoverTerrain(LocalTileCoord coord);
     ContentId? GetRaisedFeature(LocalTileCoord coord);
     void SetBaseTerrain(LocalTileCoord coord, ContentId terrainId);
     void SetCoverTerrain(LocalTileCoord coord, ContentId? terrainId);

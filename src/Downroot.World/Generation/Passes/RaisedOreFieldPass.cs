@@ -101,24 +101,7 @@ public sealed class RaisedOreFieldPass(ContentId featureId, RaisedOreFieldRuleRe
     private bool MatchesWorldAndRegion(IWorldGenContext context, RaisedOreFieldRuleDef rule, WorldTileCoord worldTile)
     {
         return context.WorldSpaceKind == rule.WorldSpaceKind
-            && SampleSurfaceRegion(context, worldTile) == rule.RequiredSurfaceRegion;
-    }
-
-    private string SampleSurfaceRegion(IWorldGenContext context, WorldTileCoord worldTile)
-    {
-        if (context.WorldSpaceKind == WorldSpaceKind.DimShardPocket)
-        {
-            return SurfaceRegions.DimShardField;
-        }
-
-        var grass = GrassRegionPass.SampleLayeredNoise(context, worldTile);
-        if (grass >= 0.57f)
-        {
-            return SurfaceRegions.GrassField;
-        }
-
-        var isRiver = RiverPass.IsRiverTile(context, worldTile);
-        return isRiver ? SurfaceRegions.River : SurfaceRegions.DirtField;
+            && SurfaceRegionSampler.SampleSurfaceRegion(context, worldTile) == rule.RequiredSurfaceRegion;
     }
 
     private bool TrySampleDeposit(IWorldGenContext context, RaisedOreFieldRuleDef rule, WorldTileCoord latticeCoord, out Deposit deposit)
