@@ -8,6 +8,7 @@ using Downroot.Gameplay.Runtime;
 using Downroot.World.Generation;
 using Godot;
 using NumericsVector2 = System.Numerics.Vector2;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace Downroot.Game.Runtime;
@@ -21,7 +22,8 @@ public sealed partial class WorldRenderer : Node2D
     private const int EntityBandLayerZ = 768;
     private const int ChunkBoundsLayerZ = 1536;
     private const int MaxEntitySortSpan = 1023;
-    private const int ChunkTerrainAttachBudgetPerFrame = 128;
+    private const double ChunkTerrainAttachBudgetMsPerFrame = 1.25d;
+    private const int ChunkTerrainAttachHardSpriteCapPerFrame = 32;
 
     private readonly TextureContentLoader _textureLoader;
     private readonly PlayerAnimationFactory _animationFactory;
@@ -211,7 +213,7 @@ public sealed partial class WorldRenderer : Node2D
         }
 
         CollectCompletedChunkTerrainBuilds();
-        ProcessPendingChunkTerrainAttaches(ChunkTerrainAttachBudgetPerFrame);
+        ProcessPendingChunkTerrainAttaches(ChunkTerrainAttachBudgetMsPerFrame, ChunkTerrainAttachHardSpriteCapPerFrame);
 
         if (_lastEntityProjectionVersion != _runtime!.WorldState.EntityProjectionVersion)
         {
@@ -439,10 +441,12 @@ public sealed partial class WorldRenderer : Node2D
         }
     }
 
-    private void ProcessPendingChunkTerrainAttaches(int spriteBudget)
+    private void ProcessPendingChunkTerrainAttaches(double timeBudgetMs, int hardSpriteCap)
     {
         using var scope = RuntimeProfiler.Measure("WorldRenderer.AttachChunkTerrainBudget");
-        while (spriteBudget > 0 && _pendingChunkTerrainAttachOrder.Count > 0)
+        var startedAt = Stopwatch.GetTimestamp();
+        var attachedThisFrame = 0;
+        while (attachedThisFrame < hardSpriteCap && _pendingChunkTerrainAttachOrder.Count > 0)
         {
             var coord = _pendingChunkTerrainAttachOrder.Peek();
             if (!_pendingChunkTerrainAttaches.TryGetValue(coord, out var pendingAttach))
@@ -458,13 +462,14 @@ public sealed partial class WorldRenderer : Node2D
                 continue;
             }
 
-            var attachedSprites = AttachChunkTerrainSprites(visual, pendingAttach, spriteBudget);
+            var remainingSpriteBudget = hardSpriteCap - attachedThisFrame;
+            var attachedSprites = AttachChunkTerrainSprites(visual, pendingAttach, remainingSpriteBudget, startedAt, timeBudgetMs);
             if (attachedSprites <= 0)
             {
                 break;
             }
 
-            spriteBudget -= attachedSprites;
+            attachedThisFrame += attachedSprites;
             if (pendingAttach.IsCompleted)
             {
                 _pendingChunkTerrainAttaches.Remove(coord);
@@ -474,22 +479,37 @@ public sealed partial class WorldRenderer : Node2D
                 continue;
             }
 
+            if (attachedThisFrame >= hardSpriteCap || ElapsedMilliseconds(startedAt) >= timeBudgetMs)
+            {
+                break;
+            }
+
             break;
         }
     }
 
-    private int AttachChunkTerrainSprites(ChunkVisualState visual, PendingChunkTerrainAttach pendingAttach, int spriteBudget)
+    private int AttachChunkTerrainSprites(
+        ChunkVisualState visual,
+        PendingChunkTerrainAttach pendingAttach,
+        int spriteBudget,
+        long startedAt,
+        double timeBudgetMs)
     {
         var remaining = spriteBudget;
-        remaining -= AttachBaseTerrainSprites(visual, pendingAttach, remaining);
-        remaining -= AttachCoverTerrainSprites(visual, pendingAttach, remaining);
-        remaining -= AttachDualGridTerrainSprites(visual, pendingAttach, pendingAttach.BuildResult.DeepWaterTerrains, pendingAttach.DeepWaterIndex, visual.DeepWaterSprites, remaining);
-        remaining -= AttachDualGridTerrainSprites(visual, pendingAttach, pendingAttach.BuildResult.BeachTerrains, pendingAttach.BeachIndex, visual.BeachSprites, remaining);
-        remaining -= AttachDualGridTerrainSprites(visual, pendingAttach, pendingAttach.BuildResult.GrassTerrains, pendingAttach.GrassIndex, visual.GrassSprites, remaining);
+        remaining -= AttachBaseTerrainSprites(visual, pendingAttach, remaining, startedAt, timeBudgetMs);
+        remaining -= AttachCoverTerrainSprites(visual, pendingAttach, remaining, startedAt, timeBudgetMs);
+        remaining -= AttachDualGridTerrainSprites(visual, pendingAttach, pendingAttach.BuildResult.DeepWaterTerrains, pendingAttach.DeepWaterIndex, visual.DeepWaterSprites, remaining, startedAt, timeBudgetMs);
+        remaining -= AttachDualGridTerrainSprites(visual, pendingAttach, pendingAttach.BuildResult.BeachTerrains, pendingAttach.BeachIndex, visual.BeachSprites, remaining, startedAt, timeBudgetMs);
+        remaining -= AttachDualGridTerrainSprites(visual, pendingAttach, pendingAttach.BuildResult.GrassTerrains, pendingAttach.GrassIndex, visual.GrassSprites, remaining, startedAt, timeBudgetMs);
         return spriteBudget - remaining;
     }
 
-    private int AttachBaseTerrainSprites(ChunkVisualState visual, PendingChunkTerrainAttach pendingAttach, int spriteBudget)
+    private int AttachBaseTerrainSprites(
+        ChunkVisualState visual,
+        PendingChunkTerrainAttach pendingAttach,
+        int spriteBudget,
+        long startedAt,
+        double timeBudgetMs)
     {
         var attached = 0;
         while (attached < spriteBudget && pendingAttach.BaseIndex < pendingAttach.BuildResult.BaseTerrains.Length)
@@ -501,12 +521,21 @@ public sealed partial class WorldRenderer : Node2D
             visual.BaseTerrainSprites[descriptor.Tile] = sprite;
             visual.BaseTerrainTints[descriptor.Tile] = descriptor.BaseTint;
             attached++;
+            if (ElapsedMilliseconds(startedAt) >= timeBudgetMs)
+            {
+                break;
+            }
         }
 
         return attached;
     }
 
-    private int AttachCoverTerrainSprites(ChunkVisualState visual, PendingChunkTerrainAttach pendingAttach, int spriteBudget)
+    private int AttachCoverTerrainSprites(
+        ChunkVisualState visual,
+        PendingChunkTerrainAttach pendingAttach,
+        int spriteBudget,
+        long startedAt,
+        double timeBudgetMs)
     {
         var attached = 0;
         while (attached < spriteBudget && pendingAttach.CoverIndex < pendingAttach.BuildResult.CoverTerrains.Length)
@@ -517,6 +546,10 @@ public sealed partial class WorldRenderer : Node2D
             visual.TerrainRoot.AddChild(sprite);
             visual.CoverTerrainSprites[descriptor.Tile] = sprite;
             attached++;
+            if (ElapsedMilliseconds(startedAt) >= timeBudgetMs)
+            {
+                break;
+            }
         }
 
         return attached;
@@ -528,7 +561,9 @@ public sealed partial class WorldRenderer : Node2D
         DualGridTerrainSpriteDescriptor[] descriptors,
         int currentIndex,
         Dictionary<WorldTileCoord, Sprite2D> spriteBucket,
-        int spriteBudget)
+        int spriteBudget,
+        long startedAt,
+        double timeBudgetMs)
     {
         var attached = 0;
         while (attached < spriteBudget && currentIndex < descriptors.Length)
@@ -539,10 +574,19 @@ public sealed partial class WorldRenderer : Node2D
             spriteBucket[descriptor.Tile] = sprite;
             currentIndex++;
             attached++;
+            if (ElapsedMilliseconds(startedAt) >= timeBudgetMs)
+            {
+                break;
+            }
         }
 
         pendingAttach.SetLayerIndex(descriptors, currentIndex);
         return attached;
+    }
+
+    private static double ElapsedMilliseconds(long startedAt)
+    {
+        return Stopwatch.GetElapsedTime(startedAt, Stopwatch.GetTimestamp()).TotalMilliseconds;
     }
 
     private Sprite2D CreateTerrainSprite(string name, WorldTileCoord worldTile, TerrainDef terrainDef, int zIndex, Color? baseTint = null)

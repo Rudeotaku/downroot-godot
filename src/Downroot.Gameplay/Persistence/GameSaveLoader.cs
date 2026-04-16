@@ -43,7 +43,7 @@ public sealed class GameSaveLoader
 
         runtime.ActiveWorldSpaceKind = Enum.Parse<WorldSpaceKind>(save.ActiveWorldSpaceKind, ignoreCase: true);
         var streamer = new WorldStreamingSystem(runtime, worldFacade);
-        streamer.UpdateLoadedChunks();
+        streamer.UpdateLoadedChunksForWorld(runtime.GetWorld(runtime.ActiveWorldSpaceKind), runtime.GetWorldTile(runtime.Player.Position));
         worldFacade.ClearPrimaryBedAssignments();
         if (runtime.PrimaryBedEntityId is { } primaryBedId)
         {
