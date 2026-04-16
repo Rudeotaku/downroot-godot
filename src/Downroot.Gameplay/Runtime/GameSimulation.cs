@@ -11,6 +11,7 @@ public sealed class GameSimulation
 {
     private const float AttackRange = 28f;
     private const int EmptyHandDamage = 1;
+    private const float ThrowableHitRadius = 20f;
 
     private readonly GameRuntime _runtime;
     private readonly WorldRuntimeFacade _worldFacade;
@@ -146,9 +147,18 @@ public sealed class GameSimulation
             HandleConsumption(input);
         }
 
+        var handledThrowable = false;
+        using (RuntimeProfiler.Measure("GameSimulation.Throw"))
+        {
+            handledThrowable = HandleThrowableUse(input, selectedItemDef);
+        }
+
         using (RuntimeProfiler.Measure("GameSimulation.Place"))
         {
-            _placementSystem.HandlePlacement(input);
+            if (!handledThrowable)
+            {
+                _placementSystem.HandlePlacement(input);
+            }
         }
 
         using (RuntimeProfiler.Measure("GameSimulation.Destroy"))
@@ -378,6 +388,92 @@ public sealed class GameSimulation
             : EmptyHandDamage;
         _creatureSystem.DamageCreature(target, damage);
         _suppressDestroyUntilRelease = true;
+    }
+
+    private bool HandleThrowableUse(InputFrame input, ItemDef? selectedItem)
+    {
+        if (!input.PlacePressed || selectedItem?.ThrowableWeapon is null)
+        {
+            return false;
+        }
+
+        var slot = _runtime.Player.Inventory.Slots[_runtime.Player.SelectedHotbarIndex];
+        if (slot.ItemId is null || slot.Quantity <= 0)
+        {
+            return false;
+        }
+
+        var direction = input.PointerWorld - _runtime.Player.Position;
+        if (direction == System.Numerics.Vector2.Zero)
+        {
+            direction = _runtime.Player.Facing;
+        }
+
+        direction = MovementSystem.NormalizeMovement(direction);
+        if (direction == System.Numerics.Vector2.Zero)
+        {
+            return false;
+        }
+
+        var throwDistance = selectedItem.ThrowableWeapon.ThrowSpeed;
+        var landingPosition = _movementSystem.ClampToWorldBounds(_runtime.Player.Position + direction * throwDistance);
+        var hitCreature = FindThrowableTarget(_runtime.Player.Position, landingPosition);
+        if (hitCreature is not null)
+        {
+            _creatureSystem.DamageCreature(hitCreature, selectedItem.ThrowableWeapon.Damage);
+        }
+
+        var dropPosition = hitCreature?.Position ?? landingPosition;
+        var dropTile = _runtime.GetWorldTile(dropPosition);
+        _worldFacade.AddRuntimeEntity(_runtime.ActiveWorldSpaceKind, new WorldEntityState(
+            WorldEntityKind.ItemDrop,
+            slot.ItemId.Value,
+            _runtime.GetWorldPosition(dropTile),
+            1,
+            _runtime.ActiveWorldSpaceKind,
+            dropTile.ToChunkCoord(_runtime.ChunkWidth, _runtime.ChunkHeight),
+            stackCount: 1));
+        slot.Remove(1);
+        return true;
+    }
+
+    private WorldEntityState? FindThrowableTarget(System.Numerics.Vector2 origin, System.Numerics.Vector2 landingPosition)
+    {
+        var throwVector = landingPosition - origin;
+        var throwLengthSquared = throwVector.LengthSquared();
+        if (throwLengthSquared <= 0f)
+        {
+            return null;
+        }
+
+        WorldEntityState? best = null;
+        var bestAlong = float.MaxValue;
+        foreach (var entity in _worldQuery.GetActiveEntities())
+        {
+            if (entity.Kind != WorldEntityKind.Creature || entity.Removed)
+            {
+                continue;
+            }
+
+            var relative = entity.Position - origin;
+            var along = System.Numerics.Vector2.Dot(relative, throwVector) / throwLengthSquared;
+            if (along < 0f || along > 1f)
+            {
+                continue;
+            }
+
+            var projected = origin + throwVector * along;
+            var distanceToPath = System.Numerics.Vector2.Distance(entity.Position, projected);
+            if (distanceToPath > ThrowableHitRadius || along >= bestAlong)
+            {
+                continue;
+            }
+
+            best = entity;
+            bestAlong = along;
+        }
+
+        return best;
     }
 
     private ItemDef? GetSelectedItemDef()

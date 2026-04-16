@@ -151,8 +151,9 @@ public sealed class BaseGameContentPack : IContentPack
             16,
             16,
             1,
-            UseBehavior: ItemUseBehaviorKind.HarvestTool,
-            HarvestTool: new HarvestToolDef(2f)));
+            UseBehavior: ItemUseBehaviorKind.MeleeWeapon,
+            HarvestTool: new HarvestToolDef(2f),
+            MeleeWeapon: new MeleeWeaponDef(2)));
         registrar.RegisterItem(new ItemDef(
             ironKnifeItemId,
             "Iron Knife",
@@ -171,8 +172,8 @@ public sealed class BaseGameContentPack : IContentPack
             16,
             16,
             1,
-            UseBehavior: ItemUseBehaviorKind.MeleeWeapon,
-            MeleeWeapon: new MeleeWeaponDef(2)));
+            UseBehavior: ItemUseBehaviorKind.ThrowableWeapon,
+            ThrowableWeapon: new ThrowableWeaponDef(3, 176f)));
         registrar.RegisterItem(new ItemDef(stoneWallItemId, "Stone Wall", PackId, "packs/basegame/assets/structures/walls/stone_wall.png", 32, 32, 32, stoneWallPlaceableId));
         registrar.RegisterItem(new ItemDef(stoneFloorItemId, "Stone Floor", PackId, "packs/basegame/assets/world/terrain/floors/stone_floor.png", 32, 32, 64, stoneFloorPlaceableId));
         registrar.RegisterItem(new ItemDef(workbenchItemId, "Workbench", PackId, "packs/basegame/assets/production/workstations/workbench.png", 28, 32, 8, workbenchPlaceableId));
@@ -210,7 +211,7 @@ public sealed class BaseGameContentPack : IContentPack
         registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_stone_wall"), "Stone Wall", PackId, [new ItemAmount(stoneItemId, 2)], new ItemAmount(stoneWallItemId, 1), CraftingStationKind.Workbench));
         registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_stone_floor"), "Stone Floor", PackId, [new ItemAmount(stoneItemId, 1)], new ItemAmount(stoneFloorItemId, 1), CraftingStationKind.Workbench));
         registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_workbench_weapons_upgrade"), "Weapons Bench Upgrade", PackId, [new ItemAmount(logItemId, 6), new ItemAmount(ironIngotItemId, 2), new ItemAmount(voidCrystalItemId, 1)], new ItemAmount(workbenchUpgradeItemId, 1), CraftingStationKind.Workbench, RecipeExecutionKind.UpgradeActiveStation, CraftingStationKind.WeaponsBench));
-        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_wood_spear"), "Wood Spear", PackId, [new ItemAmount(logItemId, 2), new ItemAmount(stoneItemId, 1)], new ItemAmount(woodSpearItemId, 1), CraftingStationKind.WeaponsBench));
+        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_wood_spear"), "Wood Spear", PackId, [new ItemAmount(logItemId, 2), new ItemAmount(ironIngotItemId, 1)], new ItemAmount(woodSpearItemId, 1), CraftingStationKind.WeaponsBench));
         registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_axe"), "Axe", PackId, [new ItemAmount(logItemId, 1), new ItemAmount(ironIngotItemId, 1)], new ItemAmount(axeItemId, 1), CraftingStationKind.WeaponsBench));
         registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_iron_knife"), "Iron Knife", PackId, [new ItemAmount(logItemId, 1), new ItemAmount(ironIngotItemId, 2)], new ItemAmount(ironKnifeItemId, 1), CraftingStationKind.WeaponsBench));
         registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:smelt_voidite"), "Void Crystal", PackId, [new ItemAmount(voiditeItemId, 1)], new ItemAmount(voidCrystalItemId, 2), CraftingStationKind.Furnace, CraftDurationSeconds: 3f));
