@@ -55,6 +55,7 @@ public sealed class GamePresentationBuilder
                 : mode switch
             {
                 CraftWorkspaceMode.Furnace => "Furnace",
+                CraftWorkspaceMode.WeaponsBench => "Weapons Bench",
                 CraftWorkspaceMode.Workbench => "Workbench",
                 _ => "Handcraft"
             },
@@ -64,6 +65,7 @@ public sealed class GamePresentationBuilder
             {
                 CraftWorkspaceMode.Furnace => CraftModeIconKind.Furnace,
                 CraftWorkspaceMode.Workbench => CraftModeIconKind.Workbench,
+                CraftWorkspaceMode.WeaponsBench => CraftModeIconKind.Workbench,
                 _ => CraftModeIconKind.Handcraft
             },
             mode == CraftWorkspaceMode.Hidden ? [] : BuildRecipeRows(runtime, simulation, mode),
@@ -109,7 +111,7 @@ public sealed class GamePresentationBuilder
                     recipe.DisplayName,
                     costs,
                     canCraft,
-                    isRunning ? "Busy" : IsFurnaceRecipe(recipe) ? "Smelt" : "Craft",
+                    isRunning ? "Busy" : ResolveActionLabel(recipe),
                     isRunning,
                     isRunning ? activeTask!.Progress01 : 0f);
             })
@@ -179,6 +181,7 @@ public sealed class GamePresentationBuilder
             { Kind: StatusEventKind.LightLit } => new StatusBannerViewData(true, "Light source lit"),
             { Kind: StatusEventKind.LightExtinguished } => new StatusBannerViewData(true, "Light source extinguished"),
             { Kind: StatusEventKind.LightBurnedOut } => new StatusBannerViewData(true, "This torch has burned out"),
+            { Kind: StatusEventKind.StationUpgraded } => new StatusBannerViewData(true, "Workbench upgraded"),
             _ => new StatusBannerViewData(true, "Craft failed")
         };
     }
@@ -213,6 +216,16 @@ public sealed class GamePresentationBuilder
     private static string ResolveItemName(ContentRegistrySet content, ContentId contentId) => content.Items.Get(contentId).DisplayName;
 
     private static bool IsFurnaceRecipe(RecipeDef recipe) => recipe.RequiredStationKind == CraftingStationKind.Furnace;
+
+    private static string ResolveActionLabel(RecipeDef recipe)
+    {
+        if (recipe.ExecutionKind == RecipeExecutionKind.UpgradeActiveStation)
+        {
+            return "Upgrade";
+        }
+
+        return IsFurnaceRecipe(recipe) ? "Smelt" : "Craft";
+    }
 
     private static float ToPercent(int current, int max) => max <= 0 ? 0f : Math.Clamp((float)current / max, 0f, 1f);
 

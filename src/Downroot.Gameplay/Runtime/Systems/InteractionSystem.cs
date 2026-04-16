@@ -64,6 +64,11 @@ public sealed class InteractionSystem(
         return _placeableResolver.TryGetNearbyStation(stationKind, out station);
     }
 
+    public bool TryGetNearbyWorkbenchStation(out WorldEntityState station)
+    {
+        return _placeableResolver.TryGetNearbyWorkbenchStation(out station);
+    }
+
     private void InteractResourceNode(WorldEntityState entity)
     {
         var def = runtime.Content.ResourceNodes.Get(entity.DefinitionId);

@@ -21,5 +21,6 @@ public sealed class SavedRuntimeEntityData
     public float FuelSecondsRemaining { get; set; }
     public bool AssignedAsPrimaryBed { get; set; }
     public float FuelLastUpdatedTotalSeconds { get; set; }
+    public string? UpgradedCraftingStationKind { get; set; }
     public IReadOnlyList<SavedInventorySlotData>? StorageInventorySlots { get; set; }
 }

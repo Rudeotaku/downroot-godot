@@ -11,7 +11,7 @@ public sealed class CraftingSystem(GameRuntime runtime, WorldQueryService worldQ
         return workspaceMode switch
         {
             CraftWorkspaceMode.Handcraft => runtime.Content.Recipes.All.Where(recipe => recipe.RequiredStationKind == CraftingStationKind.Handcraft).ToArray(),
-            CraftWorkspaceMode.Workbench => runtime.Content.Recipes.All.Where(recipe => recipe.RequiredStationKind == CraftingStationKind.Workbench).ToArray(),
+            CraftWorkspaceMode.Workbench or CraftWorkspaceMode.WeaponsBench => runtime.Content.Recipes.All.Where(CanActiveStationExecuteRecipe).ToArray(),
             CraftWorkspaceMode.Furnace => runtime.Content.Recipes.All.Where(recipe => recipe.RequiredStationKind == CraftingStationKind.Furnace).ToArray(),
             _ => []
         };
@@ -25,9 +25,12 @@ public sealed class CraftingSystem(GameRuntime runtime, WorldQueryService worldQ
         var outputs = GetRecipeOutputs(recipe);
         if (recipe.RequiredStationKind != CraftingStationKind.Handcraft && !IsStationAvailable(recipe.RequiredStationKind))
         {
-            failureReason = recipe.RequiredStationKind == CraftingStationKind.Furnace
-                ? $"{recipe.DisplayName} requires an active furnace."
-                : $"{recipe.DisplayName} requires a nearby workbench.";
+            failureReason = recipe.RequiredStationKind switch
+            {
+                CraftingStationKind.Furnace => $"{recipe.DisplayName} requires an active furnace.",
+                CraftingStationKind.WeaponsBench => $"{recipe.DisplayName} requires an upgraded weapons bench.",
+                _ => $"{recipe.DisplayName} requires a nearby workbench."
+            };
             PublishCraftResult(recipe, false, failureReason, new StatusEventState(StatusEventKind.StationRequired, recipe.Result.ItemId));
             return false;
         }
@@ -40,7 +43,7 @@ public sealed class CraftingSystem(GameRuntime runtime, WorldQueryService worldQ
             return false;
         }
 
-        if (!runtime.Player.Inventory.CanAddMany(outputs, runtime.Content))
+        if (outputs.Count > 0 && !runtime.Player.Inventory.CanAddMany(outputs, runtime.Content))
         {
             failureReason = $"No inventory space for {recipe.DisplayName}.";
             PublishCraftResult(recipe, false, failureReason, new StatusEventState(StatusEventKind.InventoryFull, recipe.Result.ItemId));
@@ -73,6 +76,18 @@ public sealed class CraftingSystem(GameRuntime runtime, WorldQueryService worldQ
         foreach (var ingredient in recipe.Ingredients)
         {
             runtime.Player.Inventory.TryConsume(ingredient.ItemId, ingredient.Amount);
+        }
+
+        if (recipe.ExecutionKind == RecipeExecutionKind.UpgradeActiveStation)
+        {
+            if (!TryUpgradeActiveStation(recipe, out failureReason))
+            {
+                PublishCraftResult(recipe, false, failureReason, new StatusEventState(StatusEventKind.CraftFailed, recipe.Result.ItemId));
+                return false;
+            }
+
+            PublishCraftResult(recipe, true, $"Upgraded {recipe.DisplayName}.", new StatusEventState(StatusEventKind.StationUpgraded, recipe.Result.ItemId));
+            return true;
         }
 
         foreach (var output in outputs)
@@ -152,7 +167,7 @@ public sealed class CraftingSystem(GameRuntime runtime, WorldQueryService worldQ
             return true;
         }
 
-        return runtime.WorldState.ActiveStationKind == stationKind && runtime.WorldState.ActiveStationEntityId is not null;
+        return CanStationExecuteRecipe(runtime.WorldState.ActiveStationKind, stationKind) && runtime.WorldState.ActiveStationEntityId is not null;
     }
 
     private void PublishCraftResult(RecipeDef recipe, bool success, string message, StatusEventState statusEvent)
@@ -164,10 +179,64 @@ public sealed class CraftingSystem(GameRuntime runtime, WorldQueryService worldQ
 
     private static IReadOnlyList<ItemAmount> GetRecipeOutputs(RecipeDef recipe)
     {
+        if (recipe.ExecutionKind == RecipeExecutionKind.UpgradeActiveStation)
+        {
+            return [];
+        }
+
         return recipe.ExtraResults is null
             ? [recipe.Result]
             : (new[] { recipe.Result }).Concat(recipe.ExtraResults).ToArray();
     }
 
     private static string ShortName(ContentId id) => id.Value.Split(':')[1].Replace('_', ' ');
+
+    private bool TryUpgradeActiveStation(RecipeDef recipe, out string failureReason)
+    {
+        if (runtime.WorldState.ActiveStationEntityId is not { } stationId
+            || !worldQuery.TryGetActiveEntity(stationId, out var stationEntity))
+        {
+            failureReason = "No active station selected.";
+            return false;
+        }
+
+        if (recipe.UpgradeStationKind is not { } upgradeStationKind)
+        {
+            failureReason = "Recipe is missing a target station upgrade.";
+            return false;
+        }
+
+        stationEntity.PlaceableState ??= new PlaceableRuntimeState();
+        var currentStationKind = stationEntity.PlaceableState.UpgradedCraftingStationKind
+            ?? runtime.Content.Placeables.Get(stationEntity.DefinitionId).CraftingStationKind;
+        if (currentStationKind == upgradeStationKind)
+        {
+            failureReason = $"{recipe.DisplayName} is already applied.";
+            return false;
+        }
+
+        stationEntity.PlaceableState.UpgradedCraftingStationKind = upgradeStationKind;
+        runtime.WorldState.ActiveStationKind = upgradeStationKind;
+        runtime.WorldState.WorkspaceMode = upgradeStationKind == CraftingStationKind.WeaponsBench
+            ? CraftWorkspaceMode.WeaponsBench
+            : CraftWorkspaceMode.Workbench;
+        failureReason = string.Empty;
+        return true;
+    }
+
+    private bool CanActiveStationExecuteRecipe(RecipeDef recipe)
+    {
+        if (recipe.RequiredStationKind == CraftingStationKind.Handcraft)
+        {
+            return false;
+        }
+
+        return CanStationExecuteRecipe(runtime.WorldState.ActiveStationKind, recipe.RequiredStationKind);
+    }
+
+    private static bool CanStationExecuteRecipe(CraftingStationKind? activeStationKind, CraftingStationKind requiredStationKind)
+    {
+        return activeStationKind == requiredStationKind
+            || activeStationKind == CraftingStationKind.WeaponsBench && requiredStationKind == CraftingStationKind.Workbench;
+    }
 }

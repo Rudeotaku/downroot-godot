@@ -1,5 +1,6 @@
 using System.Numerics;
 using Downroot.Core.Definitions;
+using Downroot.Core.Gameplay;
 using Downroot.Core.Ids;
 using Downroot.Core.World;
 using Downroot.World.Generation;
@@ -167,6 +168,16 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
 
         placeableDef = null!;
         return false;
+    }
+
+    public CraftingStationKind? GetEffectiveCraftingStationKind(WorldEntityState entity)
+    {
+        if (!TryGetPlaceableDef(entity, out var placeableDef))
+        {
+            return null;
+        }
+
+        return entity.PlaceableState?.UpgradedCraftingStationKind ?? placeableDef.CraftingStationKind;
     }
 
     private LightingFieldBounds ResolveLightingDirtyBounds(WorldEntityState entity)

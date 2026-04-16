@@ -244,7 +244,7 @@ public sealed class DestroySystem(GameRuntime runtime, WorldRuntimeFacade worldF
             return duration;
         }
 
-        var multiplier = selectedItemDef?.TreeBreakSpeedMultiplier ?? 1f;
+        var multiplier = selectedItemDef?.HarvestTool?.TreeBreakSpeedMultiplier ?? 1f;
         return Math.Max(0.2f, duration / Math.Max(1f, multiplier));
     }
 }

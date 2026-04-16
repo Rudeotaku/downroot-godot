@@ -13,5 +13,7 @@ public sealed record ItemDef(
     ContentId? PlaceableId = null,
     int HungerRestore = 0,
     int HealthRestore = 0,
-    float TreeBreakSpeedMultiplier = 1f,
-    int MeleeDamage = 0) : ContentDef(Id, DisplayName, SourcePackId);
+    ItemUseBehaviorKind UseBehavior = ItemUseBehaviorKind.None,
+    HarvestToolDef? HarvestTool = null,
+    MeleeWeaponDef? MeleeWeapon = null,
+    ThrowableWeaponDef? ThrowableWeapon = null) : ContentDef(Id, DisplayName, SourcePackId);

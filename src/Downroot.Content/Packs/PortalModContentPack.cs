@@ -64,7 +64,7 @@ public sealed class PortalModContentPack : IContentPack
         registrar.RegisterRaisedFeature(new RaisedFeatureDef(frostcoreRaisedId, "Frostcore", PackId, "packs/portalmod/assets/world/nature/ores/frostcore.png", 32, 32, 13, 5, [new ItemAmount(frostcoreItemId, 1)]));
         registrar.RegisterPortalWorldLink(portalLink);
         registrar.RegisterRaisedOreFieldRule(new RaisedOreFieldRuleDef(frostcoreRaisedId, WorldSpaceKind.DimShardPocket, SurfaceRegions.DimShardField, 0.24f, false, [frostcoreRaisedId]));
-        registrar.RegisterRecipe(new RecipeDef(new ContentId("portalmod:smelt_frostcore"), "Ice Crystal", PackId, [new ItemAmount(frostcoreItemId, 1)], new ItemAmount(iceCrystalItemId, 2), CraftingStationKind.Furnace, 3.5f));
+        registrar.RegisterRecipe(new RecipeDef(new ContentId("portalmod:smelt_frostcore"), "Ice Crystal", PackId, [new ItemAmount(frostcoreItemId, 1)], new ItemAmount(iceCrystalItemId, 2), CraftingStationKind.Furnace, CraftDurationSeconds: 3.5f));
 
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("portalmod:portal-site"), WorldGenPassTypes.PortalSite, portalPlaceableId, WorldSpaceKind.Overworld));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("portalmod:dim-fill"), WorldGenPassTypes.FillTerrain, dimfragId, WorldSpaceKind.DimShardPocket, PrimarySurfaceRegion: SurfaceRegions.DimShardField));

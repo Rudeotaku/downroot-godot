@@ -1,4 +1,5 @@
 using Downroot.Core.Ids;
+using Downroot.Core.Gameplay;
 using Downroot.Core.Save;
 using Downroot.Core.World;
 using Downroot.World.Models;
@@ -143,6 +144,7 @@ public sealed class ChunkRuntimeState
             FuelSecondsRemaining = entity.PlaceableState?.FuelSecondsRemaining ?? 0f,
             AssignedAsPrimaryBed = entity.PlaceableState?.AssignedAsPrimaryBed ?? false,
             FuelLastUpdatedTotalSeconds = entity.PlaceableState?.FuelLastUpdatedTotalSeconds ?? 0f,
+            UpgradedCraftingStationKind = entity.PlaceableState?.UpgradedCraftingStationKind?.ToString(),
             StorageInventorySlots = entity.StorageInventory?.Slots
                 .Select((slot, index) => new SavedInventorySlotData
                 {
@@ -178,7 +180,8 @@ public sealed class ChunkRuntimeState
             || savedEntity.IsLit
             || savedEntity.FuelSecondsRemaining > 0f
             || savedEntity.AssignedAsPrimaryBed
-            || savedEntity.FuelLastUpdatedTotalSeconds > 0f)
+            || savedEntity.FuelLastUpdatedTotalSeconds > 0f
+            || !string.IsNullOrWhiteSpace(savedEntity.UpgradedCraftingStationKind))
         {
             entity.PlaceableState = new PlaceableRuntimeState
             {
@@ -186,7 +189,10 @@ public sealed class ChunkRuntimeState
                 IsLit = savedEntity.IsLit,
                 FuelSecondsRemaining = savedEntity.FuelSecondsRemaining,
                 AssignedAsPrimaryBed = savedEntity.AssignedAsPrimaryBed,
-                FuelLastUpdatedTotalSeconds = savedEntity.FuelLastUpdatedTotalSeconds
+                FuelLastUpdatedTotalSeconds = savedEntity.FuelLastUpdatedTotalSeconds,
+                UpgradedCraftingStationKind = string.IsNullOrWhiteSpace(savedEntity.UpgradedCraftingStationKind)
+                    ? null
+                    : Enum.Parse<CraftingStationKind>(savedEntity.UpgradedCraftingStationKind, ignoreCase: true)
             };
         }
 

@@ -34,7 +34,21 @@ public sealed class WorldQueryService(GameRuntime runtime, WorldRuntimeFacade wo
         {
             return entity.Kind == WorldEntityKind.Placeable
                 && runtime.Content.Placeables.Get(entity.DefinitionId).HasBehavior(Downroot.Core.Definitions.PlaceableBehaviorKind.CraftingStation)
-                && runtime.Content.Placeables.Get(entity.DefinitionId).CraftingStationKind == stationKind;
+                && MatchesStationKind(worldFacade.GetEffectiveCraftingStationKind(entity), stationKind);
+        });
+    }
+
+    public WorldEntityState? FindNearbyWorkbenchStation(float range)
+    {
+        return FindNearest(range, entity =>
+        {
+            if (entity.Kind != WorldEntityKind.Placeable)
+            {
+                return false;
+            }
+
+            var effectiveKind = worldFacade.GetEffectiveCraftingStationKind(entity);
+            return effectiveKind is CraftingStationKind.Workbench or CraftingStationKind.WeaponsBench;
         });
     }
 
@@ -108,5 +122,11 @@ public sealed class WorldQueryService(GameRuntime runtime, WorldRuntimeFacade wo
             WorldEntityKind.Placeable => runtime.Content.Placeables.Get(entity.DefinitionId).CanBeDestroyed,
             _ => false
         };
+    }
+
+    private static bool MatchesStationKind(CraftingStationKind? availableStation, CraftingStationKind requiredStation)
+    {
+        return availableStation == requiredStation
+            || availableStation == CraftingStationKind.WeaponsBench && requiredStation == CraftingStationKind.Workbench;
     }
 }

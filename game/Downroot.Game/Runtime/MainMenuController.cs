@@ -25,6 +25,7 @@ public sealed class MainMenuController
     private readonly Button _modManagementButton;
     private readonly Button _settingsButton;
     private readonly Button _quitButton;
+    private readonly Label _errorLabel;
     private readonly Label _versionLabel;
 
     public MainMenuController()
@@ -95,6 +96,16 @@ public sealed class MainMenuController
         _menuColumn.AddChild(_settingsButton);
         _menuColumn.AddChild(_quitButton);
 
+        _errorLabel = new Label
+        {
+            Visible = false,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(280, 54)
+        };
+        _errorLabel.AddThemeFontSizeOverride("font_size", 14);
+        _errorLabel.AddThemeColorOverride("font_color", new Color(1f, 0.68f, 0.62f, 0.95f));
+        _menuColumn.AddChild(_errorLabel);
+
         _versionLabel = new Label
         {
             AnchorLeft = 0,
@@ -129,6 +140,8 @@ public sealed class MainMenuController
         ConfigureButton(_modManagementButton, "Mod Management", true);
         ConfigureButton(_settingsButton, "Settings", true);
         ConfigureButton(_quitButton, "Quit", true);
+        _errorLabel.Visible = !string.IsNullOrWhiteSpace(data.ErrorMessage);
+        _errorLabel.Text = data.ErrorMessage ?? string.Empty;
         _versionLabel.Visible = true;
         _versionLabel.Text = data.VersionLabel;
     }
@@ -151,6 +164,7 @@ public sealed class MainMenuController
         _modManagementButton.Disabled = false;
         _settingsButton.Disabled = false;
         _quitButton.Disabled = false;
+        _errorLabel.Visible = false;
         _versionLabel.Visible = false;
     }
 

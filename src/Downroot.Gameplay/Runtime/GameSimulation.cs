@@ -157,7 +157,7 @@ public sealed class GameSimulation
                 deltaSeconds,
                 input,
                 _suppressDestroyUntilRelease,
-                selectedItemDef?.MeleeDamage is > 0 && nearestCreature is not null,
+                selectedItemDef?.MeleeWeapon is not null && nearestCreature is not null,
                 selectedItemDef,
                 _debugState?.FastBreak ?? false);
         }
@@ -316,12 +316,14 @@ public sealed class GameSimulation
             return;
         }
 
-        if (_interactionSystem.TryGetNearbyStation(CraftingStationKind.Workbench, out var station))
+        if (_interactionSystem.TryGetNearbyWorkbenchStation(out var station))
         {
-            var stationDef = _runtime.Content.Placeables.Get(station.DefinitionId);
-            _runtime.WorldState.ActiveStationKind = stationDef.CraftingStationKind;
+            var stationKind = _worldFacade.GetEffectiveCraftingStationKind(station);
+            _runtime.WorldState.ActiveStationKind = stationKind;
             _runtime.WorldState.ActiveStationEntityId = station.Id;
-            _runtime.WorldState.WorkspaceMode = CraftWorkspaceMode.Workbench;
+            _runtime.WorldState.WorkspaceMode = stationKind == CraftingStationKind.WeaponsBench
+                ? CraftWorkspaceMode.WeaponsBench
+                : CraftWorkspaceMode.Workbench;
             return;
         }
 
@@ -371,8 +373,8 @@ public sealed class GameSimulation
             return;
         }
 
-        var damage = selectedItem?.MeleeDamage is > 0
-            ? selectedItem.MeleeDamage
+        var damage = selectedItem?.MeleeWeapon is not null
+            ? selectedItem.MeleeWeapon.Damage
             : EmptyHandDamage;
         _creatureSystem.DamageCreature(target, damage);
         _suppressDestroyUntilRelease = true;

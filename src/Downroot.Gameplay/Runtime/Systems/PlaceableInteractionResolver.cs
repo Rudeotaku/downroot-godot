@@ -37,6 +37,12 @@ public sealed class PlaceableInteractionResolver(
         return station is not null;
     }
 
+    public bool TryGetNearbyWorkbenchStation(out WorldEntityState station)
+    {
+        station = worldQuery.FindNearbyWorkbenchStation(StationRange)!;
+        return station is not null;
+    }
+
     public InteractionContext CreateInteractionContext(WorldEntityState entity)
     {
         var verb = ResolveAction(entity).Verb;
@@ -191,11 +197,15 @@ public sealed class PlaceableInteractionResolver(
     private void ActivateStation(WorldEntityState entity, PlaceableDef def)
     {
         CloseActiveStorage();
-        runtime.WorldState.ActiveStationKind = def.CraftingStationKind;
+        var effectiveKind = worldFacade.GetEffectiveCraftingStationKind(entity) ?? def.CraftingStationKind;
+        runtime.WorldState.ActiveStationKind = effectiveKind;
         runtime.WorldState.ActiveStationEntityId = entity.Id;
-        runtime.WorldState.WorkspaceMode = def.CraftingStationKind == CraftingStationKind.Furnace
-            ? CraftWorkspaceMode.Furnace
-            : CraftWorkspaceMode.Workbench;
+        runtime.WorldState.WorkspaceMode = effectiveKind switch
+        {
+            CraftingStationKind.Furnace => CraftWorkspaceMode.Furnace,
+            CraftingStationKind.WeaponsBench => CraftWorkspaceMode.WeaponsBench,
+            _ => CraftWorkspaceMode.Workbench
+        };
     }
 
     private void ToggleDoor(WorldEntityState entity)
@@ -263,7 +273,7 @@ public sealed class PlaceableInteractionResolver(
         {
             runtime.WorldState.ActiveStationEntityId = null;
             runtime.WorldState.ActiveStationKind = null;
-            if (runtime.WorldState.WorkspaceMode is CraftWorkspaceMode.Workbench or CraftWorkspaceMode.Furnace)
+            if (runtime.WorldState.WorkspaceMode is CraftWorkspaceMode.Workbench or CraftWorkspaceMode.WeaponsBench or CraftWorkspaceMode.Furnace)
             {
                 runtime.WorldState.WorkspaceMode = CraftWorkspaceMode.Hidden;
             }

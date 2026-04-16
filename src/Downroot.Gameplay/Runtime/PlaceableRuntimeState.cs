@@ -1,3 +1,5 @@
+using Downroot.Core.Gameplay;
+
 namespace Downroot.Gameplay.Runtime;
 
 public sealed class PlaceableRuntimeState
@@ -7,6 +9,7 @@ public sealed class PlaceableRuntimeState
     public float FuelSecondsRemaining { get; set; }
     public bool AssignedAsPrimaryBed { get; set; }
     public float FuelLastUpdatedTotalSeconds { get; set; }
+    public CraftingStationKind? UpgradedCraftingStationKind { get; set; }
 
     public PlaceableRuntimeState Clone()
     {
@@ -16,7 +19,8 @@ public sealed class PlaceableRuntimeState
             IsLit = IsLit,
             FuelSecondsRemaining = FuelSecondsRemaining,
             AssignedAsPrimaryBed = AssignedAsPrimaryBed,
-            FuelLastUpdatedTotalSeconds = FuelLastUpdatedTotalSeconds
+            FuelLastUpdatedTotalSeconds = FuelLastUpdatedTotalSeconds,
+            UpgradedCraftingStationKind = UpgradedCraftingStationKind
         };
     }
 }

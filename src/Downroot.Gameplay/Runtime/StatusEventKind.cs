@@ -15,5 +15,6 @@ public enum StatusEventKind
     SleptUntilMorning,
     LightLit,
     LightExtinguished,
-    LightBurnedOut
+    LightBurnedOut,
+    StationUpgraded
 }

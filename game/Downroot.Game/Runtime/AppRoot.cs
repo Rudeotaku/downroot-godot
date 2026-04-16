@@ -123,7 +123,7 @@ public partial class AppRoot : Control
         }
     }
 
-    private void ShowMainMenu()
+    private void ShowMainMenu(string? errorMessage = null)
     {
         GetTree().Paused = false;
         _pauseMenuActive = false;
@@ -133,6 +133,7 @@ public partial class AppRoot : Control
         {
             CanContinue = _saves!.LoadManifest().LastPlayedSlotId is not null,
             CanLoadGame = _saves.ListSlots().Count > 0,
+            ErrorMessage = errorMessage,
             VersionLabel = $"v{ProjectSettings.GetSetting("application/config/version", "0.4")}"
         });
         ShowPage(_mainMenu.View);
@@ -301,10 +302,13 @@ public partial class AppRoot : Control
         if (!_session!.Start(request))
         {
             _pageHost.Visible = true;
-            var errorMessage = request.ExistingSave is null
-                ? _session.LastStartError
-                : FormatLoadFailure(request.ExistingSave, _session.LastStartError);
-            ShowLoadGame(errorMessage);
+            if (request.ExistingSave is null)
+            {
+                ShowMainMenu(_session.LastStartError);
+                return;
+            }
+
+            ShowLoadGame(FormatLoadFailure(request.ExistingSave, _session.LastStartError));
         }
     }
 

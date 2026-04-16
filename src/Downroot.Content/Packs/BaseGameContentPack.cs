@@ -143,9 +143,36 @@ public sealed class BaseGameContentPack : IContentPack
         registrar.RegisterItem(new ItemDef(sandItemId, "Sand", PackId, "packs/basegame/assets/items/resources/sand.png", 16, 16, 99));
         registrar.RegisterItem(new ItemDef(siliconWaferItemId, "Silicon Wafer", PackId, "packs/basegame/assets/items/resources/silicon_wafer.png", 16, 16, 32));
         registrar.RegisterItem(new ItemDef(iceCrystalItemId, "Ice Crystal", PackId, "packs/basegame/assets/items/resources/ice_crystal.png", 16, 16, 32));
-        registrar.RegisterItem(new ItemDef(axeItemId, "Axe", PackId, "packs/basegame/assets/items/tools/axe.png", 16, 16, 1, null, 0, 0, 2f));
-        registrar.RegisterItem(new ItemDef(ironKnifeItemId, "Iron Knife", PackId, "packs/basegame/assets/items/weapons/iron_knife.png", 16, 16, 1, null, 0, 0, 1f, 3));
-        registrar.RegisterItem(new ItemDef(woodSpearItemId, "Wood Spear", PackId, "packs/basegame/assets/items/weapons/wood_spear.png", 16, 16, 1, null, 0, 0, 1f, 2));
+        registrar.RegisterItem(new ItemDef(
+            axeItemId,
+            "Axe",
+            PackId,
+            "packs/basegame/assets/items/tools/axe.png",
+            16,
+            16,
+            1,
+            UseBehavior: ItemUseBehaviorKind.HarvestTool,
+            HarvestTool: new HarvestToolDef(2f)));
+        registrar.RegisterItem(new ItemDef(
+            ironKnifeItemId,
+            "Iron Knife",
+            PackId,
+            "packs/basegame/assets/items/weapons/iron_knife.png",
+            16,
+            16,
+            1,
+            UseBehavior: ItemUseBehaviorKind.MeleeWeapon,
+            MeleeWeapon: new MeleeWeaponDef(3)));
+        registrar.RegisterItem(new ItemDef(
+            woodSpearItemId,
+            "Wood Spear",
+            PackId,
+            "packs/basegame/assets/items/weapons/wood_spear.png",
+            16,
+            16,
+            1,
+            UseBehavior: ItemUseBehaviorKind.MeleeWeapon,
+            MeleeWeapon: new MeleeWeaponDef(2)));
         registrar.RegisterItem(new ItemDef(stoneWallItemId, "Stone Wall", PackId, "packs/basegame/assets/structures/walls/stone_wall.png", 32, 32, 32, stoneWallPlaceableId));
         registrar.RegisterItem(new ItemDef(stoneFloorItemId, "Stone Floor", PackId, "packs/basegame/assets/world/terrain/floors/stone_floor.png", 32, 32, 64, stoneFloorPlaceableId));
         registrar.RegisterItem(new ItemDef(workbenchItemId, "Workbench", PackId, "packs/basegame/assets/production/workstations/workbench.png", 28, 32, 8, workbenchPlaceableId));
@@ -182,14 +209,14 @@ public sealed class BaseGameContentPack : IContentPack
         registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_furnace"), "Furnace", PackId, [new ItemAmount(stoneItemId, 4)], new ItemAmount(furnaceItemId, 1), CraftingStationKind.Workbench));
         registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_stone_wall"), "Stone Wall", PackId, [new ItemAmount(stoneItemId, 2)], new ItemAmount(stoneWallItemId, 1), CraftingStationKind.Workbench));
         registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_stone_floor"), "Stone Floor", PackId, [new ItemAmount(stoneItemId, 1)], new ItemAmount(stoneFloorItemId, 1), CraftingStationKind.Workbench));
-        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_wood_spear"), "Wood Spear", PackId, [new ItemAmount(logItemId, 2), new ItemAmount(stoneItemId, 1)], new ItemAmount(woodSpearItemId, 1), CraftingStationKind.Workbench));
-        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_axe"), "Axe", PackId, [new ItemAmount(logItemId, 1), new ItemAmount(ironIngotItemId, 1)], new ItemAmount(axeItemId, 1), CraftingStationKind.Workbench));
-        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_iron_knife"), "Iron Knife", PackId, [new ItemAmount(logItemId, 1), new ItemAmount(ironIngotItemId, 2)], new ItemAmount(ironKnifeItemId, 1), CraftingStationKind.Workbench));
-        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_workbench_weapons_upgrade"), "Weapons Bench Upgrade", PackId, [new ItemAmount(logItemId, 6), new ItemAmount(ironIngotItemId, 2), new ItemAmount(voidCrystalItemId, 1)], new ItemAmount(workbenchUpgradeItemId, 1), CraftingStationKind.Workbench));
-        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:smelt_voidite"), "Void Crystal", PackId, [new ItemAmount(voiditeItemId, 1)], new ItemAmount(voidCrystalItemId, 2), CraftingStationKind.Furnace, 3f));
-        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:smelt_goldvein"), "Gold Ingot + Sand", PackId, [new ItemAmount(goldveinItemId, 1)], new ItemAmount(goldIngotItemId, 1), CraftingStationKind.Furnace, 3.5f, [new ItemAmount(sandItemId, 1)]));
-        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:smelt_venomite"), "Poison Crystal + Iron Ingot", PackId, [new ItemAmount(venomiteItemId, 1)], new ItemAmount(poisonCrystalItemId, 1), CraftingStationKind.Furnace, 3.5f, [new ItemAmount(ironIngotItemId, 1)]));
-        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:smelt_silicon_wafer"), "Silicon Wafer", PackId, [new ItemAmount(sandItemId, 8)], new ItemAmount(siliconWaferItemId, 1), CraftingStationKind.Furnace, 5f));
+        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_workbench_weapons_upgrade"), "Weapons Bench Upgrade", PackId, [new ItemAmount(logItemId, 6), new ItemAmount(ironIngotItemId, 2), new ItemAmount(voidCrystalItemId, 1)], new ItemAmount(workbenchUpgradeItemId, 1), CraftingStationKind.Workbench, RecipeExecutionKind.UpgradeActiveStation, CraftingStationKind.WeaponsBench));
+        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_wood_spear"), "Wood Spear", PackId, [new ItemAmount(logItemId, 2), new ItemAmount(stoneItemId, 1)], new ItemAmount(woodSpearItemId, 1), CraftingStationKind.WeaponsBench));
+        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_axe"), "Axe", PackId, [new ItemAmount(logItemId, 1), new ItemAmount(ironIngotItemId, 1)], new ItemAmount(axeItemId, 1), CraftingStationKind.WeaponsBench));
+        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:craft_iron_knife"), "Iron Knife", PackId, [new ItemAmount(logItemId, 1), new ItemAmount(ironIngotItemId, 2)], new ItemAmount(ironKnifeItemId, 1), CraftingStationKind.WeaponsBench));
+        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:smelt_voidite"), "Void Crystal", PackId, [new ItemAmount(voiditeItemId, 1)], new ItemAmount(voidCrystalItemId, 2), CraftingStationKind.Furnace, CraftDurationSeconds: 3f));
+        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:smelt_goldvein"), "Gold Ingot + Sand", PackId, [new ItemAmount(goldveinItemId, 1)], new ItemAmount(goldIngotItemId, 1), CraftingStationKind.Furnace, CraftDurationSeconds: 3.5f, ExtraResults: [new ItemAmount(sandItemId, 1)]));
+        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:smelt_venomite"), "Poison Crystal + Iron Ingot", PackId, [new ItemAmount(venomiteItemId, 1)], new ItemAmount(poisonCrystalItemId, 1), CraftingStationKind.Furnace, CraftDurationSeconds: 3.5f, ExtraResults: [new ItemAmount(ironIngotItemId, 1)]));
+        registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:smelt_silicon_wafer"), "Silicon Wafer", PackId, [new ItemAmount(sandItemId, 8)], new ItemAmount(siliconWaferItemId, 1), CraftingStationKind.Furnace, CraftDurationSeconds: 5f));
 
         RegisterOverworldPasses(registrar, dirtId, grassId, riverWaterId, rockOutcropNodeId, treeNodeId, blueberryNodeId, stoneNodeId, voiditeRaisedId, goldveinRaisedId, venomiteRaisedId, wormId, cockroachId);
 

@@ -24,7 +24,7 @@ public sealed class GameBootstrapper
                 SaveSlotId = "quick-start",
                 DisplayName = "Quick Start",
                 WorldSeed = 1337,
-                EnabledPackIds = [BaseGameContentPack.Id, PortalModContentPack.Id],
+                EnabledPackIds = [BaseGameContentPack.Id],
                 IsNewGame = true
             }
         });
