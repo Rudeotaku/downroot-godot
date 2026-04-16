@@ -58,6 +58,7 @@ public static class TerrainSemanticWorldSampler
         return visual switch
         {
             TerrainVisualKind.Grass => SurfaceRegions.GrassField,
+            TerrainVisualKind.Beach => SurfaceRegions.BeachShore,
             TerrainVisualKind.DeepWater => SurfaceRegions.River,
             TerrainVisualKind.ShallowWater => SurfaceRegions.River,
             TerrainVisualKind.Mountain => SurfaceRegions.RockyOutcrop,
@@ -92,6 +93,18 @@ public static class TerrainSemanticWorldSampler
             if (neighbors.Contains(TerrainVisualKind.Mountain))
             {
                 return TerrainVisualKind.Dirt;
+            }
+        }
+
+        if (visual == TerrainVisualKind.Dirt
+            && fields.RiverDistance <= 1.9f
+            && !neighbors.Contains(TerrainVisualKind.Mountain))
+        {
+            var shorelineNeighborCount = neighbors.Count(neighbor =>
+                neighbor is TerrainVisualKind.DeepWater or TerrainVisualKind.ShallowWater or TerrainVisualKind.Beach);
+            if (shorelineNeighborCount >= 2)
+            {
+                return TerrainVisualKind.Beach;
             }
         }
 

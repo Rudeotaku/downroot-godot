@@ -314,6 +314,9 @@ public sealed partial class WorldRenderer : Node2D
         var semantics = new SurfaceTileSemantic[width * height];
         var baseTerrainIds = new ContentId?[width * height];
         var coverTerrainIds = new ContentId?[width * height];
+        // Overlay and base dual-grid ownership must stay separate.
+        // Dirt is resolved through the base channel, while grass/beach/deep-water
+        // are additional overlays on top of that base visual.
         var overlayDualGridVisualWindow = new TerrainVisualKind[(width + 1) * (height + 1)];
         var baseDualGridVisualWindow = new TerrainVisualKind?[(width + 1) * (height + 1)];
 
@@ -392,6 +395,8 @@ public sealed partial class WorldRenderer : Node2D
             }
         }
 
+        // Base dual-grid layers replace flat base tiles for their terrain family.
+        // Do not reintroduce a second base dirt sprite path on top of this.
         foreach (var layerDef in TerrainVisualRenderResolver.BaseDualGridLayers)
         {
             for (var y = 0; y < snapshot.Height; y++)
@@ -415,6 +420,7 @@ public sealed partial class WorldRenderer : Node2D
                 }
             }
         }
+        // Overlay dual-grid layers are additive and intentionally drawn after the base.
         foreach (var layerDef in TerrainVisualRenderResolver.OverlayDualGridLayers)
         {
             var bucket = layerDef.VisualKind switch

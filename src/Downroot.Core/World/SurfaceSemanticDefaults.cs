@@ -26,6 +26,14 @@ public static class SurfaceSemanticDefaults
                 true,
                 true,
                 true),
+            SurfaceRegions.BeachShore => new SurfaceTileSemantic(
+                TerrainVisualKind.Beach,
+                SurfaceGameplayKind.Ground,
+                HeightKind.Low,
+                ShoreProfileKind.Gentle,
+                false,
+                true,
+                false),
             SurfaceRegions.River => new SurfaceTileSemantic(
                 TerrainVisualKind.ShallowWater,
                 SurfaceGameplayKind.Wadeable,

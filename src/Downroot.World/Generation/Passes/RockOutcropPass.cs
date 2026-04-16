@@ -14,7 +14,9 @@ public sealed class RockOutcropPass(ContentId outcropId) : IWorldGenPass
             for (var x = 0; x < context.Width; x++)
             {
                 var local = new LocalTileCoord(x, y);
-                if (!context.HasSurfaceRegion(local, SurfaceRegions.DirtField) && context.WorldSpaceKind == WorldSpaceKind.Overworld)
+                var semantic = context.GetSurfaceSemantic(local);
+                if (context.WorldSpaceKind == WorldSpaceKind.Overworld
+                    && (semantic.Visual != TerrainVisualKind.Dirt || semantic.ShoreProfile != ShoreProfileKind.None))
                 {
                     continue;
                 }
