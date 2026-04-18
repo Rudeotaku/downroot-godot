@@ -9,6 +9,8 @@ public sealed class WorldGenerator(ContentRegistrySet registries, IReadOnlyList<
 {
     public GeneratedChunk GenerateChunk(WorldSpaceKind worldSpaceKind, int worldSeed, ChunkCoord chunkCoord, int width, int height)
     {
+        Console.WriteLine($"[WorldGen][ChunkStart] world={worldSpaceKind} seed={worldSeed} chunk={chunkCoord.X},{chunkCoord.Y} size={width}x{height}");
+
         var spawns = new List<WorldSpawnDef>();
         var surface = new ChunkData(width, height);
         var context = new WorldGenContext(worldSpaceKind, worldSeed, chunkCoord, surface, registries, spawns);
@@ -19,6 +21,7 @@ public sealed class WorldGenerator(ContentRegistrySet registries, IReadOnlyList<
         }
 
         LogRegionDistribution(context);
+        Console.WriteLine($"[WorldGen][ChunkDone] world={worldSpaceKind} chunk={chunkCoord.X},{chunkCoord.Y} spawns={spawns.Count}");
 
         return new GeneratedChunk(worldSpaceKind, chunkCoord, surface, spawns.ToArray());
     }
