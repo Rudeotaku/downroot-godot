@@ -61,6 +61,7 @@ public sealed class BerryPatchSpawnPass(
 
         if (chosenCenters.Count == 0)
         {
+            LogGenerationStats(context, centers.Count, 0, 0);
             return;
         }
 
@@ -72,6 +73,7 @@ public sealed class BerryPatchSpawnPass(
             {
                 if (spawned >= totalCap)
                 {
+                    LogGenerationStats(context, centers.Count, chosenCenters.Count, spawned);
                     return;
                 }
 
@@ -94,6 +96,8 @@ public sealed class BerryPatchSpawnPass(
                 spawned++;
             }
         }
+
+        LogGenerationStats(context, centers.Count, chosenCenters.Count, spawned);
     }
 
     private static IEnumerable<LocalTileCoord> EnumeratePatch(IWorldGenContext context, LocalTileCoord center)
@@ -218,6 +222,12 @@ public sealed class BerryPatchSpawnPass(
         var dx = a.X - b.X;
         var dy = a.Y - b.Y;
         return (dx * dx) + (dy * dy);
+    }
+
+    private void LogGenerationStats(IWorldGenContext context, int candidateCenterCount, int chosenCenterCount, int spawnedCount)
+    {
+        Console.WriteLine(
+            $"[WorldGen][BerryPatch] chunk {context.ChunkCoord.X},{context.ChunkCoord.Y} candidates={candidateCenterCount} centers={chosenCenterCount} spawned={spawnedCount}");
     }
 
     private readonly record struct ScoredCandidate(LocalTileCoord Coord, float Score);

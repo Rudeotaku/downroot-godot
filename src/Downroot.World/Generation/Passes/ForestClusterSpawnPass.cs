@@ -93,12 +93,21 @@ public sealed class ForestClusterSpawnPass(
         var desiredCount = ComputeDesiredCount(candidates.Count);
         if (desiredCount <= 0 || candidates.Count == 0)
         {
+            LogGenerationStats(context, candidates.Count, desiredCount, 0, 0, 0f, 0f);
             return;
         }
 
         var centers = SelectPatchCenters(candidates, desiredCount);
         if (centers.Count == 0)
         {
+            LogGenerationStats(
+                context,
+                candidates.Count,
+                desiredCount,
+                0,
+                0,
+                candidates.Average(candidate => candidate.Score),
+                candidates.Average(candidate => candidate.Density));
             return;
         }
 
@@ -145,6 +154,15 @@ public sealed class ForestClusterSpawnPass(
             var offset = SampleSpawnOffset(context, candidate.Coord, treeId);
             context.AddSpawn(candidate.Coord, treeId, offset.OffsetX, offset.OffsetY);
         }
+
+        LogGenerationStats(
+            context,
+            candidates.Count,
+            desiredCount,
+            centers.Count,
+            chosen.Count,
+            candidates.Average(candidate => candidate.Score),
+            candidates.Average(candidate => candidate.Density));
     }
 
     private float ScoreCandidate(IWorldGenContext context, LocalTileCoord coord, TerrainRegionKind region, float density)
@@ -406,5 +424,18 @@ public sealed class ForestClusterSpawnPass(
         var offsetX = (int)MathF.Round((context.GetStableUnitValue(world, salt + 17) - 0.5f) * 10f);
         var offsetY = (int)MathF.Round((context.GetStableUnitValue(world, salt + 31) - 0.5f) * 8f);
         return (offsetX, offsetY);
+    }
+
+    private void LogGenerationStats(
+        IWorldGenContext context,
+        int candidateCount,
+        int desiredCount,
+        int centerCount,
+        int chosenCount,
+        float averageScore,
+        float averageDensity)
+    {
+        Console.WriteLine(
+            $"[WorldGen][ForestCluster] chunk {context.ChunkCoord.X},{context.ChunkCoord.Y} biome={biome} candidates={candidateCount} desired={desiredCount} centers={centerCount} chosen={chosenCount} avgScore={averageScore:0.00} avgDensity={averageDensity:0.00}");
     }
 }
