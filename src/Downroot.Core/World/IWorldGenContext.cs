@@ -1,9 +1,11 @@
 using Downroot.Core.Ids;
+using Downroot.Core.Diagnostics;
 
 namespace Downroot.Core.World;
 
 public interface IWorldGenContext
 {
+    IDiagnosticLogger Logger { get; }
     WorldSpaceKind WorldSpaceKind { get; }
     int WorldSeed { get; }
     ChunkCoord ChunkCoord { get; }

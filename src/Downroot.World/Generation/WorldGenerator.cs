@@ -1,32 +1,38 @@
 using Downroot.Content.Registries;
+using Downroot.Core.Diagnostics;
 using Downroot.Core.World;
 using Downroot.World.Models;
 using System.Text;
 
 namespace Downroot.World.Generation;
 
-public sealed class WorldGenerator(ContentRegistrySet registries, IReadOnlyList<IWorldGenPass> passes)
+public sealed class WorldGenerator(
+    ContentRegistrySet registries,
+    IReadOnlyList<IWorldGenPass> passes,
+    IDiagnosticLogger? logger = null)
 {
+    private readonly IDiagnosticLogger _logger = logger ?? NullDiagnosticLogger.Instance;
+
     public GeneratedChunk GenerateChunk(WorldSpaceKind worldSpaceKind, int worldSeed, ChunkCoord chunkCoord, int width, int height)
     {
-        Console.WriteLine($"[WorldGen][ChunkStart] world={worldSpaceKind} seed={worldSeed} chunk={chunkCoord.X},{chunkCoord.Y} size={width}x{height}");
+        _logger.Log($"[WorldGen][ChunkStart] world={worldSpaceKind} seed={worldSeed} chunk={chunkCoord.X},{chunkCoord.Y} size={width}x{height}");
 
         var spawns = new List<WorldSpawnDef>();
         var surface = new ChunkData(width, height);
-        var context = new WorldGenContext(worldSpaceKind, worldSeed, chunkCoord, surface, registries, spawns);
+        var context = new WorldGenContext(worldSpaceKind, worldSeed, chunkCoord, surface, registries, spawns, _logger);
 
         foreach (var pass in passes)
         {
             pass.Execute(context);
         }
 
-        LogRegionDistribution(context);
-        Console.WriteLine($"[WorldGen][ChunkDone] world={worldSpaceKind} chunk={chunkCoord.X},{chunkCoord.Y} spawns={spawns.Count}");
+        LogRegionDistribution(context, _logger);
+        _logger.Log($"[WorldGen][ChunkDone] world={worldSpaceKind} chunk={chunkCoord.X},{chunkCoord.Y} spawns={spawns.Count}");
 
         return new GeneratedChunk(worldSpaceKind, chunkCoord, surface, spawns.ToArray());
     }
 
-    private static void LogRegionDistribution(IWorldGenContext context)
+    private static void LogRegionDistribution(IWorldGenContext context, IDiagnosticLogger logger)
     {
         if (context.WorldSpaceKind != WorldSpaceKind.Overworld)
         {
@@ -57,6 +63,6 @@ public sealed class WorldGenerator(ContentRegistrySet registries, IReadOnlyList<
             summary.Append($"{pair.Key}:{pair.Value} ({percent:0.#}%)");
         }
 
-        Console.WriteLine($"[WorldGen][Regions] chunk {context.ChunkCoord.X},{context.ChunkCoord.Y} => {summary}");
+        logger.Log($"[WorldGen][Regions] chunk {context.ChunkCoord.X},{context.ChunkCoord.Y} => {summary}");
     }
 }

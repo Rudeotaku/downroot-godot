@@ -226,7 +226,7 @@ public sealed class BerryPatchSpawnPass(
 
     private void LogGenerationStats(IWorldGenContext context, int candidateCenterCount, int chosenCenterCount, int spawnedCount)
     {
-        Console.WriteLine(
+        context.Logger.Log(
             $"[WorldGen][BerryPatch] chunk {context.ChunkCoord.X},{context.ChunkCoord.Y} candidates={candidateCenterCount} centers={chosenCenterCount} spawned={spawnedCount}");
     }
 

@@ -11,7 +11,7 @@ public sealed class SessionController
 {
     private readonly Node _host;
     private readonly SaveGameRepository _saveRepository;
-    private readonly GameBootstrapper _bootstrapper = new();
+    private readonly GameBootstrapper _bootstrapper = new(new GodotDiagnosticLogger());
     private readonly GameSaveSnapshotBuilder _snapshotBuilder = new();
 
     private GameRoot? _gameRoot;

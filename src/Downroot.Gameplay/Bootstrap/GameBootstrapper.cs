@@ -2,6 +2,7 @@ using System.Numerics;
 using Downroot.Content.Packs;
 using Downroot.Content.Registries;
 using Downroot.Core.Content;
+using Downroot.Core.Diagnostics;
 using Downroot.Core.World;
 using Downroot.Core.Save;
 using Downroot.Gameplay.Persistence;
@@ -14,6 +15,12 @@ namespace Downroot.Gameplay.Bootstrap;
 public sealed class GameBootstrapper
 {
     private readonly ContentPackResolver _packResolver = new();
+    private readonly IDiagnosticLogger _logger;
+
+    public GameBootstrapper(IDiagnosticLogger? logger = null)
+    {
+        _logger = logger ?? NullDiagnosticLogger.Instance;
+    }
 
     public GameRuntime Bootstrap()
     {
@@ -197,14 +204,15 @@ public sealed class GameBootstrapper
         return $"dimshard:{overworldSeed}:{portalChunk.X},{portalChunk.Y}";
     }
 
-    private static WorldGenerator CreateGenerator(ContentRegistrySet registries, WorldSpaceKind worldSpaceKind)
+    private WorldGenerator CreateGenerator(ContentRegistrySet registries, WorldSpaceKind worldSpaceKind)
     {
         return new WorldGenerator(
             registries,
             registries.WorldGenPasses
                 .Where(pass => pass.WorldSpaceKind is null || pass.WorldSpaceKind == worldSpaceKind)
                 .Select(pass => WorldGenPassFactory.Create(registries, pass))
-                .ToArray());
+                .ToArray(),
+            _logger);
     }
 
     private static void LoadInitialChunks(GameRuntime runtime, LoadedWorldState world, ChunkCoord centerChunk)
@@ -244,10 +252,10 @@ public sealed class GameBootstrapper
         });
     }
 
-    private static void LogLoadedWorld(LoadedWorldState world)
+    private void LogLoadedWorld(LoadedWorldState world)
     {
         var chunkSummary = string.Join(", ", world.LoadedChunks.Keys.OrderBy(coord => coord.Y).ThenBy(coord => coord.X).Select(coord => $"({coord.X},{coord.Y})"));
-        Console.WriteLine($"[WorldGen] loaded {world.WorldSpaceKind} chunks => {chunkSummary}");
+        _logger.Log($"[WorldGen] loaded {world.WorldSpaceKind} chunks => {chunkSummary}");
     }
 
     private static PortalWorldLinkDef? GetDimShardPortalLink(ContentRegistrySet registries)

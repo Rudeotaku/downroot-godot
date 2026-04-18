@@ -1,4 +1,5 @@
 using Downroot.Content.Registries;
+using Downroot.Core.Diagnostics;
 using Downroot.Core.Ids;
 using Downroot.Core.World;
 using Downroot.World.Models;
@@ -11,12 +12,14 @@ public sealed class WorldGenContext(
     ChunkCoord chunkCoord,
     ChunkData surface,
     ContentRegistrySet registries,
-    IList<WorldSpawnDef> spawns) : IWorldGenContext
+    IList<WorldSpawnDef> spawns,
+    IDiagnosticLogger logger) : IWorldGenContext
 {
     private readonly WorldSpaceKind _worldSpaceKind = worldSpaceKind;
     private readonly int _worldSeed = worldSeed;
     private readonly ChunkCoord _chunkCoord = chunkCoord;
 
+    public IDiagnosticLogger Logger { get; } = logger;
     public WorldSpaceKind WorldSpaceKind => _worldSpaceKind;
     public int WorldSeed => _worldSeed;
     public ChunkCoord ChunkCoord => _chunkCoord;

@@ -435,7 +435,7 @@ public sealed class ForestClusterSpawnPass(
         float averageScore,
         float averageDensity)
     {
-        Console.WriteLine(
+        context.Logger.Log(
             $"[WorldGen][ForestCluster] chunk {context.ChunkCoord.X},{context.ChunkCoord.Y} biome={biome} candidates={candidateCount} desired={desiredCount} centers={centerCount} chosen={chosenCount} avgScore={averageScore:0.00} avgDensity={averageDensity:0.00}");
     }
 }
