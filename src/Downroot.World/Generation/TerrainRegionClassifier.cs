@@ -23,7 +23,6 @@ public static class TerrainRegionClassifier
         var openScore = ComputeOpenScore(fields);
         var bankSharpness = ComputeBankSharpness(fields, riverChannelScore, riverBankScore, mountainCoreScore, mountainFootScore);
         var forestCoreThreshold = 0.43f + (openScore * 0.08f) + (Math.Clamp(1.02f - fields.RiverBase, 0f, 1f) * 0.03f);
-        var forestEdgeThreshold = 0.40f + (openScore * 0.16f) + (Math.Clamp(1.04f - fields.RiverBase, 0f, 1f) * 0.04f);
         var mountainFootThreshold = 0.52f + (fields.MoistureMacro * 0.04f);
         var supportsForestCore = forestScore >= forestCoreThreshold
             && openScore <= 0.68f
@@ -35,9 +34,12 @@ public static class TerrainRegionClassifier
             && fields.RiverBase <= 1.30f
             && !supportsForestCore
             && mountainFootScore < mountainFootThreshold + 0.08f;
-        var supportsForestEdge = forestScore >= forestEdgeThreshold
-            && openScore <= 0.72f
-            && fields.RiverBase >= 0.96f;
+        var forestTransitionScore = ComputeForestTransitionScore(fields, forestScore, openScore, forestCoreThreshold);
+        var supportsForestEdge = forestTransitionScore >= 0.54f
+            && forestScore >= 0.34f
+            && !supportsForestCore
+            && !supportsMountainFoot
+            && fields.RiverBase >= 0.94f;
 
         var region =
             fields.RiverBase <= 0.90f ? TerrainRegionKind.RiverChannel :
@@ -104,6 +106,22 @@ public static class TerrainRegionClassifier
         return (fields.OpenFieldBias * 0.56f)
             + ((1f - fields.ForestMass) * 0.18f)
             + ((1f - fields.MoistureMacro) * 0.12f);
+    }
+
+    private static float ComputeForestTransitionScore(
+        TerrainMacroFields fields,
+        float forestScore,
+        float openScore,
+        float forestCoreThreshold)
+    {
+        var nearCoreBand = 1f - Math.Clamp(MathF.Abs(forestScore - (forestCoreThreshold - 0.06f)) / 0.16f, 0f, 1f);
+        var openBand = 1f - Math.Clamp(MathF.Abs(openScore - 0.52f) / 0.22f, 0f, 1f);
+        var riverPenalty = Math.Clamp(1.02f - fields.RiverBase, 0f, 1f);
+        return (nearCoreBand * 0.52f)
+            + (openBand * 0.28f)
+            + (fields.ForestMass * 0.14f)
+            + (fields.MoistureMacro * 0.10f)
+            - (riverPenalty * 0.18f);
     }
 
     private static float ComputeBankSharpness(
