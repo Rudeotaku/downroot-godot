@@ -1,5 +1,4 @@
 using Downroot.Core.Save;
-using Downroot.Game.Infrastructure;
 using Downroot.Gameplay.Bootstrap;
 using Downroot.Gameplay.Persistence;
 using Downroot.Gameplay.Runtime;
@@ -11,7 +10,7 @@ public sealed class SessionController
 {
     private readonly Node _host;
     private readonly SaveGameRepository _saveRepository;
-    private readonly GameBootstrapper _bootstrapper = new(new GodotDiagnosticLogger());
+    private readonly GameBootstrapper _bootstrapper = new();
     private readonly GameSaveSnapshotBuilder _snapshotBuilder = new();
 
     private GameRoot? _gameRoot;

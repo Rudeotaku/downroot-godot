@@ -1,4 +1,5 @@
 using Downroot.Core.Ids;
+using Downroot.Core.Diagnostics;
 using Downroot.Core.World;
 
 namespace Downroot.World.Generation.Passes;
@@ -61,7 +62,11 @@ public sealed class BerryPatchSpawnPass(
 
         if (chosenCenters.Count == 0)
         {
-            LogGenerationStats(context, centers.Count, 0, 0);
+            if (ShouldLog(context))
+            {
+                LogGenerationStats(context, centers.Count, 0, 0);
+            }
+
             return;
         }
 
@@ -73,7 +78,11 @@ public sealed class BerryPatchSpawnPass(
             {
                 if (spawned >= totalCap)
                 {
-                    LogGenerationStats(context, centers.Count, chosenCenters.Count, spawned);
+                    if (ShouldLog(context))
+                    {
+                        LogGenerationStats(context, centers.Count, chosenCenters.Count, spawned);
+                    }
+
                     return;
                 }
 
@@ -97,7 +106,10 @@ public sealed class BerryPatchSpawnPass(
             }
         }
 
-        LogGenerationStats(context, centers.Count, chosenCenters.Count, spawned);
+        if (ShouldLog(context))
+        {
+            LogGenerationStats(context, centers.Count, chosenCenters.Count, spawned);
+        }
     }
 
     private static IEnumerable<LocalTileCoord> EnumeratePatch(IWorldGenContext context, LocalTileCoord center)
@@ -229,6 +241,8 @@ public sealed class BerryPatchSpawnPass(
         context.Logger.Log(
             $"[WorldGen][BerryPatch] chunk {context.ChunkCoord.X},{context.ChunkCoord.Y} candidates={candidateCenterCount} centers={chosenCenterCount} spawned={spawnedCount}");
     }
+
+    private static bool ShouldLog(IWorldGenContext context) => context.Logger is not NullDiagnosticLogger;
 
     private readonly record struct ScoredCandidate(LocalTileCoord Coord, float Score);
 }

@@ -1,4 +1,5 @@
 using Downroot.Core.Ids;
+using Downroot.Core.Diagnostics;
 using Downroot.Core.World;
 
 namespace Downroot.World.Generation.Passes;
@@ -93,21 +94,29 @@ public sealed class ForestClusterSpawnPass(
         var desiredCount = ComputeDesiredCount(candidates.Count);
         if (desiredCount <= 0 || candidates.Count == 0)
         {
-            LogGenerationStats(context, candidates.Count, desiredCount, 0, 0, 0f, 0f);
+            if (ShouldLog(context))
+            {
+                LogGenerationStats(context, candidates.Count, desiredCount, 0, 0, 0f, 0f);
+            }
+
             return;
         }
 
         var centers = SelectPatchCenters(candidates, desiredCount);
         if (centers.Count == 0)
         {
-            LogGenerationStats(
-                context,
-                candidates.Count,
-                desiredCount,
-                0,
-                0,
-                candidates.Average(candidate => candidate.Score),
-                candidates.Average(candidate => candidate.Density));
+            if (ShouldLog(context))
+            {
+                LogGenerationStats(
+                    context,
+                    candidates.Count,
+                    desiredCount,
+                    0,
+                    0,
+                    candidates.Average(candidate => candidate.Score),
+                    candidates.Average(candidate => candidate.Density));
+            }
+
             return;
         }
 
@@ -155,14 +164,17 @@ public sealed class ForestClusterSpawnPass(
             context.AddSpawn(candidate.Coord, treeId, offset.OffsetX, offset.OffsetY);
         }
 
-        LogGenerationStats(
-            context,
-            candidates.Count,
-            desiredCount,
-            centers.Count,
-            chosen.Count,
-            candidates.Average(candidate => candidate.Score),
-            candidates.Average(candidate => candidate.Density));
+        if (ShouldLog(context))
+        {
+            LogGenerationStats(
+                context,
+                candidates.Count,
+                desiredCount,
+                centers.Count,
+                chosen.Count,
+                candidates.Average(candidate => candidate.Score),
+                candidates.Average(candidate => candidate.Density));
+        }
     }
 
     private float ScoreCandidate(IWorldGenContext context, LocalTileCoord coord, TerrainRegionKind region, float density)
@@ -438,4 +450,6 @@ public sealed class ForestClusterSpawnPass(
         context.Logger.Log(
             $"[WorldGen][ForestCluster] chunk {context.ChunkCoord.X},{context.ChunkCoord.Y} biome={biome} candidates={candidateCount} desired={desiredCount} centers={centerCount} chosen={chosenCount} avgScore={averageScore:0.00} avgDensity={averageDensity:0.00}");
     }
+
+    private static bool ShouldLog(IWorldGenContext context) => context.Logger is not NullDiagnosticLogger;
 }

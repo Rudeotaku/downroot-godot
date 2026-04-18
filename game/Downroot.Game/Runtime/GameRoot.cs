@@ -10,7 +10,7 @@ namespace Downroot.Game.Runtime;
 
 public partial class GameRoot : Node2D
 {
-    private const bool EnableRuntimeProfiler = true;
+    private const bool EnableRuntimeProfiler = false;
     private GameRuntime? _runtime;
     private GameSimulation? _simulation;
     private IInputService? _inputService;

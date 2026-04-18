@@ -26,7 +26,11 @@ public sealed class WorldGenerator(
             pass.Execute(context);
         }
 
-        LogRegionDistribution(context, _logger);
+        if (context.Logger is not NullDiagnosticLogger)
+        {
+            LogRegionDistribution(context, _logger);
+        }
+
         _logger.Log($"[WorldGen][ChunkDone] world={worldSpaceKind} chunk={chunkCoord.X},{chunkCoord.Y} spawns={spawns.Count}");
 
         return new GeneratedChunk(worldSpaceKind, chunkCoord, surface, spawns.ToArray());
