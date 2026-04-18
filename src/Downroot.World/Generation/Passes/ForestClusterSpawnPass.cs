@@ -18,7 +18,7 @@ public sealed class ForestClusterSpawnPass(
     float candidateDensity,
     int? maxCountOverride) : IWorldGenPass
 {
-    private const int PatchRadius = 3;
+    private const int PatchRadius = 4;
 
     public string Name => WorldGenPassTypes.ForestClusterSpawn;
 
@@ -110,7 +110,7 @@ public sealed class ForestClusterSpawnPass(
                 break;
             }
 
-            foreach (var candidate in EnumeratePatchCandidates(context, center, candidates))
+            foreach (var candidate in EnumeratePatchCandidates(context, center))
             {
                 if (chosen.Count >= desiredCount)
                 {
@@ -213,7 +213,7 @@ public sealed class ForestClusterSpawnPass(
             spacing--;
         }
 
-        return Math.Max(biome == TreeBiomeKind.OpenLowlandSparse ? 3 : 2, spacing);
+        return Math.Max(biome == TreeBiomeKind.OpenLowlandSparse ? 2 : 1, spacing);
     }
 
     private List<TreeSpawnCandidate> SelectPatchCenters(IReadOnlyList<TreeSpawnCandidate> candidates, int desiredCount)
@@ -240,10 +240,8 @@ public sealed class ForestClusterSpawnPass(
 
     private IEnumerable<TreeSpawnCandidate> EnumeratePatchCandidates(
         IWorldGenContext context,
-        TreeSpawnCandidate center,
-        IReadOnlyList<TreeSpawnCandidate> candidates)
+        TreeSpawnCandidate center)
     {
-        var byCoord = candidates.ToDictionary(candidate => candidate.Coord);
         var patchCandidates = new List<TreeSpawnCandidate>();
         for (var dy = -PatchRadius; dy <= PatchRadius; dy++)
         {
@@ -257,7 +255,22 @@ public sealed class ForestClusterSpawnPass(
                 }
 
                 var coord = new LocalTileCoord(x, y);
-                if (!byCoord.TryGetValue(coord, out var candidate))
+                var semantic = context.GetSurfaceSemantic(coord);
+                if (!semantic.SupportsTrees || semantic.Visual == TerrainVisualKind.Mountain || context.HasRaisedFeature(coord))
+                {
+                    continue;
+                }
+
+                var region = context.SampleTerrainRegion(coord);
+                if (!IsEligibleRegion(region))
+                {
+                    continue;
+                }
+
+                var world = context.GetWorldTileCoord(coord);
+                var density = ForestDensitySampler.Sample(context.WorldSpaceKind, context.WorldSeed, world, region);
+                var baseScore = ScoreCandidate(context, coord, region, density);
+                if (baseScore < 0.18f)
                 {
                     continue;
                 }
@@ -269,8 +282,15 @@ public sealed class ForestClusterSpawnPass(
                 }
 
                 var patchFactor = 1f - (distance / (PatchRadius + 0.5f));
-                var patchScore = candidate.Score + (patchFactor * 0.38f);
-                patchCandidates.Add(candidate with { Score = patchScore });
+                var cohesionBoost = patchFactor * 0.58f;
+                var jitter = context.GetStableUnitValue(world, 7207 + ((int)biome * 17)) * 0.06f;
+                patchCandidates.Add(new TreeSpawnCandidate(
+                    coord,
+                    region,
+                    density,
+                    baseScore + cohesionBoost + jitter,
+                    biome,
+                    context.GetStableUnitValue(world, 7001 + ((int)biome * 43))));
             }
         }
 
@@ -363,7 +383,7 @@ public sealed class ForestClusterSpawnPass(
         return Math.Clamp(desired, 0, viableCandidateCount);
     }
 
-    private static float GetMinimumAcceptedScore() => 0.42f;
+    private static float GetMinimumAcceptedScore() => 0.34f;
 
     private static int DistanceSquared(LocalTileCoord a, LocalTileCoord b)
     {
