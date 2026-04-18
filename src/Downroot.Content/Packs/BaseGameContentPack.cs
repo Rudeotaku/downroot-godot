@@ -379,33 +379,33 @@ public sealed class BaseGameContentPack : IContentPack
             temperateForestTreeIds[0],
             TreeBiomeKind.TemperateForestCore,
             temperateForestTreeIds,
-            minSpacing: 3,
+            minSpacing: 2,
             requiredTerrainRegion: TerrainRegionKind.ForestCore,
             avoidRiverBank: true,
-            candidateDensity: 0.48f,
-            maxCountOverride: 20);
+            candidateDensity: 0.56f,
+            maxCountOverride: 24);
         RegisterTreeClusterPass(
             registrar,
             "basegame:spawn-conifer-mountain-foot",
             coniferForestTreeIds[0],
             TreeBiomeKind.ConiferMountainFoot,
             coniferForestTreeIds,
-            minSpacing: 4,
+            minSpacing: 2,
             requiredTerrainRegion: TerrainRegionKind.MountainFoot,
             avoidRiverBank: true,
-            candidateDensity: 0.36f,
-            maxCountOverride: 14);
+            candidateDensity: 0.48f,
+            maxCountOverride: 18);
         RegisterTreeClusterPass(
             registrar,
             "basegame:spawn-sparse-forest-edge",
             sparseEdgeTreeIds[0],
             TreeBiomeKind.SparseForestEdge,
             sparseEdgeTreeIds,
-            minSpacing: 4,
+            minSpacing: 3,
             requiredTerrainRegion: TerrainRegionKind.ForestEdge,
             avoidRiverBank: true,
-            candidateDensity: 0.26f,
-            maxCountOverride: 10);
+            candidateDensity: 0.32f,
+            maxCountOverride: 12);
         RegisterTreeClusterPass(
             registrar,
             "basegame:spawn-open-sparse-trees",

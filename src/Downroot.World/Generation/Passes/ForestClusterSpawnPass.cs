@@ -76,7 +76,7 @@ public sealed class ForestClusterSpawnPass(
                 candidates.Add(new TreeSpawnCandidate(
                     coord,
                     region,
-                    score,
+                    density,
                     score,
                     biome,
                     context.GetStableUnitValue(world, 7001 + ((int)biome * 43))));
@@ -102,7 +102,13 @@ public sealed class ForestClusterSpawnPass(
                 continue;
             }
 
-            if (minSpacing > 0 && chosen.Any(existing => DistanceSquared(existing.Coord, candidate.Coord) < minSpacing * minSpacing))
+            var candidateSpacing = GetEffectiveMinSpacing(candidate);
+            if (candidateSpacing > 0 && chosen.Any(existing =>
+            {
+                var existingSpacing = GetEffectiveMinSpacing(existing);
+                var requiredSpacing = Math.Max(1, (candidateSpacing + existingSpacing) / 2);
+                return DistanceSquared(existing.Coord, candidate.Coord) < requiredSpacing * requiredSpacing;
+            }))
             {
                 continue;
             }
@@ -170,6 +176,22 @@ public sealed class ForestClusterSpawnPass(
             + (density * 0.78f)
             - (waterPenalty * 0.42f)
             + (jitter * 0.10f);
+    }
+
+    private int GetEffectiveMinSpacing(TreeSpawnCandidate candidate)
+    {
+        var spacing = minSpacing;
+        if (candidate.Density >= 0.78f)
+        {
+            spacing--;
+        }
+
+        if (candidate.Density >= 0.90f && biome is TreeBiomeKind.TemperateForestCore or TreeBiomeKind.ConiferMountainFoot)
+        {
+            spacing--;
+        }
+
+        return Math.Max(biome == TreeBiomeKind.OpenLowlandSparse ? 3 : 2, spacing);
     }
 
     private bool IsEligibleRegion(TerrainRegionKind region)

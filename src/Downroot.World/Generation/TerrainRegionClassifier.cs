@@ -24,10 +24,10 @@ public static class TerrainRegionClassifier
         var bankSharpness = ComputeBankSharpness(fields, riverChannelScore, riverBankScore, mountainCoreScore, mountainFootScore);
 
         var region =
-            riverChannelScore >= 0.82f ? TerrainRegionKind.RiverChannel :
+            riverChannelScore >= 0.72f ? TerrainRegionKind.RiverChannel :
             mountainCoreScore >= 0.74f ? TerrainRegionKind.MountainCore :
             mountainFootScore >= 0.64f ? TerrainRegionKind.MountainFoot :
-            riverBankScore >= 0.58f ? TerrainRegionKind.RiverBank :
+            riverBankScore >= 0.46f ? TerrainRegionKind.RiverBank :
             forestScore >= 0.53f ? TerrainRegionKind.ForestCore :
             forestScore >= 0.40f && openScore < 0.82f ? TerrainRegionKind.ForestEdge :
             fields.MoistureMacro <= 0.34f && fields.RiverBase <= 1.75f && openScore >= 0.47f ? TerrainRegionKind.MudFlat :
@@ -45,17 +45,17 @@ public static class TerrainRegionClassifier
 
     private static float ComputeRiverChannelScore(TerrainMacroFields fields)
     {
-        var centerProximity = 1f - Math.Clamp(fields.RiverBase, 0f, 1f);
-        var widthSupport = Math.Clamp((fields.RiverWidth - 2.2f) / 2.4f, 0f, 1f);
-        return (centerProximity * 0.82f) + (widthSupport * 0.18f);
+        var centerProximity = 1f - Math.Clamp((fields.RiverBase - 0.20f) / 0.95f, 0f, 1f);
+        var widthSupport = Math.Clamp((fields.RiverWidth - 2.4f) / 1.6f, 0f, 1f);
+        return (centerProximity * 0.76f) + (widthSupport * 0.24f);
     }
 
     private static float ComputeRiverBankScore(TerrainMacroFields fields)
     {
-        var bankBand = 1f - Math.Abs(fields.RiverBase - 1.1f);
-        var moistureSupport = 0.35f + (fields.MoistureMacro * 0.4f);
-        var mountainResistance = ((fields.ElevationMacro * 0.45f) + (fields.RidgeMacro * 0.55f)) * 0.45f;
-        return Math.Clamp((bankBand * moistureSupport) - mountainResistance + 0.22f, 0f, 1f);
+        var bankBand = 1f - Math.Clamp(Math.Abs(fields.RiverBase - 1.05f) / 0.85f, 0f, 1f);
+        var moistureSupport = 0.42f + (fields.MoistureMacro * 0.32f);
+        var mountainResistance = ((fields.ElevationMacro * 0.40f) + (fields.RidgeMacro * 0.60f)) * 0.34f;
+        return Math.Clamp((bankBand * moistureSupport) - mountainResistance + 0.26f, 0f, 1f);
     }
 
     private static float ComputeMountainCoreScore(TerrainMacroFields fields)

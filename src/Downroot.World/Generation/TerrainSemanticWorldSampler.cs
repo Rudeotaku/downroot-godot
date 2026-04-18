@@ -122,6 +122,7 @@ public static class TerrainSemanticWorldSampler
         if (visual == TerrainVisualKind.Dirt
             && region.Region == TerrainRegionKind.RiverBank
             && !region.IsSteepBankCandidate
+            && region.RiverDistanceNormalized > 0.92f
             && neighbors.Count(neighbor => neighbor is TerrainVisualKind.DeepWater or TerrainVisualKind.ShallowWater) >= 2)
         {
             return TerrainVisualKind.Beach;
@@ -173,6 +174,11 @@ public static class TerrainSemanticWorldSampler
         TerrainMacroFields fields,
         TerrainRegionSample region)
     {
+        if (!region.IsSteepBankCandidate && region.RiverDistanceNormalized <= 0.92f)
+        {
+            return TerrainVisualKind.ShallowWater;
+        }
+
         if (region.IsSteepBankCandidate)
         {
             return TerrainVisualKind.Dirt;
