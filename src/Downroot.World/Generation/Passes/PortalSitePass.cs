@@ -9,7 +9,7 @@ public sealed class PortalSitePass(ContentId portalId, IReadOnlyList<PortalWorld
 
     public void Execute(IWorldGenContext context)
     {
-        if (!HasPortalInChunk(context.WorldSpaceKind, context.ChunkCoord))
+        if (!HasPortalInChunk(context))
         {
             return;
         }
@@ -24,11 +24,21 @@ public sealed class PortalSitePass(ContentId portalId, IReadOnlyList<PortalWorld
         context.AddSpawn(best.Value, portalId);
     }
 
-    private bool HasPortalInChunk(WorldSpaceKind worldSpaceKind, ChunkCoord chunkCoord)
+    private bool HasPortalInChunk(IWorldGenContext context)
     {
-        return links.Any(link =>
-            (link.SourceWorldSpaceKind == worldSpaceKind && link.SourcePortalChunk == chunkCoord)
-            || (link.TargetWorldSpaceKind == worldSpaceKind && link.TargetPortalChunk == chunkCoord));
+        if (links.Any(link =>
+            (link.SourceWorldSpaceKind == context.WorldSpaceKind && link.SourcePortalChunk == context.ChunkCoord)
+            || (link.TargetWorldSpaceKind == context.WorldSpaceKind && link.TargetPortalChunk == context.ChunkCoord)))
+        {
+            return true;
+        }
+
+        return PortalPlacementRules.IsGeneratedPortalChunk(
+            context.WorldSpaceKind,
+            context.WorldSeed,
+            context.Width,
+            context.Height,
+            context.ChunkCoord);
     }
 
     private static LocalTileCoord? FindNearestUsableTile(IWorldGenContext context, LocalTileCoord origin)
@@ -40,7 +50,13 @@ public sealed class PortalSitePass(ContentId portalId, IReadOnlyList<PortalWorld
             for (var x = 0; x < context.Width; x++)
             {
                 var local = new LocalTileCoord(x, y);
-                if (context.IsSpawnOccupied(local) || context.HasSurfaceRegion(local, SurfaceRegions.River))
+                if (context.IsSpawnOccupied(local) || context.HasRaisedFeature(local) || context.HasSurfaceRegion(local, SurfaceRegions.River))
+                {
+                    continue;
+                }
+
+                var semantic = context.GetSurfaceSemantic(local);
+                if (!semantic.Buildable || semantic.Surface != SurfaceGameplayKind.Ground || semantic.Visual == TerrainVisualKind.Mountain)
                 {
                     continue;
                 }

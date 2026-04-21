@@ -168,9 +168,16 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
 
     public PortalWorldLinkDef GetPortalLink(WorldSpaceKind worldSpaceKind, ChunkCoord portalChunk)
     {
-        return runtime.Content.PortalWorldLinks.First(link =>
+        var staticLink = runtime.Content.PortalWorldLinks.FirstOrDefault(link =>
             (link.SourceWorldSpaceKind == worldSpaceKind && link.SourcePortalChunk == portalChunk)
             || (link.TargetWorldSpaceKind == worldSpaceKind && link.TargetPortalChunk == portalChunk));
+        if (staticLink is not null)
+        {
+            return staticLink;
+        }
+
+        var world = runtime.GetWorld(worldSpaceKind);
+        return PortalPlacementRules.CreateGeneratedLink(worldSpaceKind, world.WorldSeed, runtime.ChunkWidth, runtime.ChunkHeight, portalChunk);
     }
 
     public bool IsPortalEntity(WorldEntityState entity)
@@ -183,9 +190,15 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
         var portalDefId = GetPortalDefinitionId(entity.WorldSpaceKind);
         return portalDefId is not null
             && entity.DefinitionId == portalDefId.Value
-            && runtime.Content.PortalWorldLinks.Any(link =>
+            && (runtime.Content.PortalWorldLinks.Any(link =>
                 (link.SourceWorldSpaceKind == entity.WorldSpaceKind && link.SourcePortalChunk == entity.ChunkCoord)
-                || (link.TargetWorldSpaceKind == entity.WorldSpaceKind && link.TargetPortalChunk == entity.ChunkCoord));
+                || (link.TargetWorldSpaceKind == entity.WorldSpaceKind && link.TargetPortalChunk == entity.ChunkCoord))
+                || PortalPlacementRules.IsGeneratedPortalChunk(
+                    entity.WorldSpaceKind,
+                    runtime.GetWorld(entity.WorldSpaceKind).WorldSeed,
+                    runtime.ChunkWidth,
+                    runtime.ChunkHeight,
+                    entity.ChunkCoord));
     }
 
     public bool TryGetPlaceableDef(WorldEntityState entity, out PlaceableDef placeableDef)
