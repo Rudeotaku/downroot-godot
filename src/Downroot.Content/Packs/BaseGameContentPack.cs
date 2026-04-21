@@ -122,7 +122,7 @@ public sealed class BaseGameContentPack : IContentPack
         registrar.RegisterPlaceable(new PlaceableDef(chestPlaceableId, "Wooden Chest", PackId, "packs/basegame/assets/production/storage/wooden_chest.png", 32, 32, 0, 0, 3, false, null, true, true, 1, 0, true, false, true, 16, false, PlaceableBehaviorKind.Storage));
         registrar.RegisterPlaceable(new PlaceableDef(doorPlaceableId, "Wooden Door", PackId, "packs/basegame/assets/structures/doors/wood_door_close_open.png", 32, 32, 0, 0, 3, false, null, true, true, 1, 0, false, Behaviors: PlaceableBehaviorKind.Door));
         registrar.RegisterPlaceable(new PlaceableDef(fencePlaceableId, "Wooden Fence", PackId, "packs/basegame/assets/structures/fences/wood_fence_horizontal.png", 32, 32, 0, 0, 2, false, null, true, false, 0, 0, false, false, true, 0, true));
-        registrar.RegisterPlaceable(new PlaceableDef(bedPlaceableId, "Bed", PackId, "packs/basegame/assets/furniture/beds/bed.png", 32, 32, 0, 0, 3, false, null, true, false, 0, 0, false, false, true, 0, false, PlaceableBehaviorKind.Bed));
+        registrar.RegisterPlaceable(new PlaceableDef(bedPlaceableId, "Bed", PackId, "packs/basegame/assets/furniture/beds/bed.png", 64, 32, 0, 0, 3, false, null, true, false, 0, 0, false, false, true, 0, false, PlaceableBehaviorKind.Bed));
         registrar.RegisterPlaceable(new PlaceableDef(
             roofPanelPlaceableId,
             "Roof Panel",
