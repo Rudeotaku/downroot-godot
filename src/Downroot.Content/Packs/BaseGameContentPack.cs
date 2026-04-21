@@ -419,8 +419,8 @@ public sealed class BaseGameContentPack : IContentPack
             maxCountOverride: 16);
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-berries"), WorldGenPassTypes.BerryPatchSpawn, blueberryNodeId, WorldSpaceKind.Overworld, 2, 0, 0, 28, 18, null, 1, false, true, MaxCountOverride: 10));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(
-            new ContentId("basegame:spawn-stones-open-lowland"),
-            WorldGenPassTypes.ScatterSpawn,
+            new ContentId("basegame:spawn-stones"),
+            WorldGenPassTypes.StoneScatter,
             stoneNodeId,
             WorldSpaceKind.Overworld,
             6,
@@ -430,57 +430,8 @@ public sealed class BaseGameContentPack : IContentPack
             18,
             null,
             2,
-            RequiredTerrainRegion: TerrainRegionKind.OpenLowland,
-            CandidateDensity: 0.08f,
-            MaxCountOverride: 6));
-        registrar.RegisterWorldGenPass(new WorldGenPassDef(
-            new ContentId("basegame:spawn-stones-forest-edge"),
-            WorldGenPassTypes.ScatterSpawn,
-            stoneNodeId,
-            WorldSpaceKind.Overworld,
-            4,
-            0,
-            0,
-            28,
-            18,
-            null,
-            3,
-            RequiredTerrainRegion: TerrainRegionKind.ForestEdge,
-            AvoidRiverBank: true,
-            CandidateDensity: 0.06f,
-            MaxCountOverride: 4));
-        registrar.RegisterWorldGenPass(new WorldGenPassDef(
-            new ContentId("basegame:spawn-stones-forest-core"),
-            WorldGenPassTypes.ScatterSpawn,
-            stoneNodeId,
-            WorldSpaceKind.Overworld,
-            3,
-            0,
-            0,
-            28,
-            18,
-            null,
-            3,
-            RequiredTerrainRegion: TerrainRegionKind.ForestCore,
-            AvoidRiverBank: true,
-            CandidateDensity: 0.04f,
-            MaxCountOverride: 3));
-        registrar.RegisterWorldGenPass(new WorldGenPassDef(
-            new ContentId("basegame:spawn-stones-mountain-foot"),
-            WorldGenPassTypes.ScatterSpawn,
-            stoneNodeId,
-            WorldSpaceKind.Overworld,
-            5,
-            0,
-            0,
-            28,
-            18,
-            null,
-            2,
-            RequiredTerrainRegion: TerrainRegionKind.MountainFoot,
-            AvoidRiverBank: true,
-            CandidateDensity: 0.12f,
-            MaxCountOverride: 5));
+            CandidateDensity: 0.018f,
+            MaxCountOverride: 8));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-worms"), WorldGenPassTypes.ScatterSpawn, wormId, WorldSpaceKind.Overworld, 3, 0, 0, 28, 18, SurfaceRegions.DirtField, 5));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-cockroaches"), WorldGenPassTypes.ScatterSpawn, cockroachId, WorldSpaceKind.Overworld, 4, 0, 0, 28, 18, SurfaceRegions.GrassField, 5));
     }

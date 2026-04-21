@@ -44,6 +44,16 @@ public static class WorldGenPassFactory
                 definition.AvoidRiverBank,
                 definition.CandidateDensity,
                 definition.MaxCountOverride),
+            WorldGenPassTypes.StoneScatter => new StoneScatterPass(
+                definition.TargetId,
+                definition.Count,
+                definition.StartColumn,
+                definition.StartRow,
+                definition.Width,
+                definition.Height,
+                definition.MinSpacing,
+                definition.CandidateDensity,
+                definition.MaxCountOverride),
             WorldGenPassTypes.ForestClusterSpawn => new ForestClusterSpawnPass(
                 definition.TreeBiome ?? throw new InvalidOperationException($"Tree biome missing for '{definition.Id}'."),
                 definition.SpeciesPoolIds ?? throw new InvalidOperationException($"Species pool missing for '{definition.Id}'."),

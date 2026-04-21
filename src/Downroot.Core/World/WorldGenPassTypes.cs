@@ -11,6 +11,7 @@ public static class WorldGenPassTypes
     public const string PortalSite = "portal-site";
     public const string DirtPatch = "dirt-patch";
     public const string ScatterSpawn = "scatter-spawn";
+    public const string StoneScatter = "stone-scatter";
     public const string ForestClusterSpawn = "forest-cluster-spawn";
     public const string BerryPatchSpawn = "berry-patch-spawn";
 }
