@@ -14,4 +14,8 @@ public sealed record ItemDef(
     int HungerRestore = 0,
     int HealthRestore = 0,
     float TreeBreakSpeedMultiplier = 1f,
-    int MeleeDamage = 0) : ContentDef(Id, DisplayName, SourcePackId);
+    int MeleeDamage = 0,
+    int IconAtlasColumn = 0,
+    int IconAtlasRow = 0,
+    float PoisonDuration = 0f,
+    int PoisonDamagePerSecond = 0) : ContentDef(Id, DisplayName, SourcePackId);

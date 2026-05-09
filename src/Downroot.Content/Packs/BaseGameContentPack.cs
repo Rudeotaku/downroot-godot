@@ -42,6 +42,8 @@ public sealed class BaseGameContentPack : IContentPack
         var chestItemId = new ContentId("basegame:wooden_chest_item");
         var doorItemId = new ContentId("basegame:wooden_door_item");
         var fenceItemId = new ContentId("basegame:wooden_fence_item");
+        var mushroomItemId = new ContentId("basegame:mushroom");
+        var poisonMushroomItemId = new ContentId("basegame:poison_mushroom");
 
         var furnacePlaceableId = new ContentId("basegame:furnace");
         var stoneWallPlaceableId = new ContentId("basegame:stone_wall");
@@ -110,6 +112,8 @@ public sealed class BaseGameContentPack : IContentPack
         registrar.RegisterItem(new ItemDef(chestItemId, "Wooden Chest", PackId, "packs/basegame/assets/production/storage/wooden_chest.png", 32, 32, 8, chestPlaceableId));
         registrar.RegisterItem(new ItemDef(doorItemId, "Wooden Door", PackId, "packs/basegame/assets/structures/doors/wood_door_close_open.png", 32, 32, 8, doorPlaceableId));
         registrar.RegisterItem(new ItemDef(fenceItemId, "Wooden Fence", PackId, "packs/basegame/assets/structures/fences/wood_fence_horizontal.png", 32, 32, 32, fencePlaceableId));
+        registrar.RegisterItem(new ItemDef(mushroomItemId, "Mushroom", PackId, "packs/basegame/assets/world/nature/plants/brown_mushroom.png", 16, 16, 20, null, 15, 0, 1f, 0, 0, 0, 0f, 0));
+        registrar.RegisterItem(new ItemDef(poisonMushroomItemId, "Poison Mushroom", PackId, "packs/basegame/assets/world/nature/plants/poison_mushroom.png", 16, 16, 20, null, 10, 0, 1f, 0, 0, 0, 5f, 2));
 
         registrar.RegisterResourceNode(new ResourceNodeDef(treeNodeId, "Tree", PackId, "packs/basegame/assets/world/nature/trees/bright_green_tree.png", 32, 32, 0, 0, 3, [new ItemAmount(logItemId, 3)], true, false, false, 0, true));
         registrar.RegisterResourceNode(new ResourceNodeDef(stoneNodeId, "Stone Node", PackId, "packs/basegame/assets/world/nature/rocks/stone.png", 32, 32, 0, 0, 1, [new ItemAmount(stoneItemId, 1)], false, true));
@@ -144,7 +148,7 @@ public sealed class BaseGameContentPack : IContentPack
         registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:smelt_venomite"), "Poison Crystal + Iron Ingot", PackId, [new ItemAmount(venomiteItemId, 1)], new ItemAmount(poisonCrystalItemId, 1), CraftingStationKind.Furnace, 3.5f, [new ItemAmount(ironIngotItemId, 1)]));
         registrar.RegisterRecipe(new RecipeDef(new ContentId("basegame:smelt_silicon_wafer"), "Silicon Wafer", PackId, [new ItemAmount(sandItemId, 8)], new ItemAmount(siliconWaferItemId, 1), CraftingStationKind.Furnace, 5f));
 
-        RegisterOverworldPasses(registrar, dirtId, grassId, riverWaterId, rockOutcropNodeId, treeNodeId, blueberryNodeId, stoneNodeId, voiditeRaisedId, goldveinRaisedId, venomiteRaisedId, wormId, cockroachId, portalPlaceableId);
+        RegisterOverworldPasses(registrar, dirtId, grassId, riverWaterId, rockOutcropNodeId, treeNodeId, blueberryNodeId, stoneNodeId, voiditeRaisedId, goldveinRaisedId, venomiteRaisedId, wormId, cockroachId, portalPlaceableId, mushroomItemId, poisonMushroomItemId);
         RegisterPocketWorldPasses(registrar, dimfragId, rockOutcropNodeId, frostcoreRaisedId, portalPlaceableId);
 
         registrar.SetBootstrapConfig(new GameBootstrapConfig(
@@ -180,7 +184,9 @@ public sealed class BaseGameContentPack : IContentPack
         ContentId venomiteRaisedId,
         ContentId wormId,
         ContentId cockroachId,
-        ContentId portalPlaceableId)
+        ContentId portalPlaceableId,
+        ContentId mushroomItemId,
+        ContentId poisonMushroomItemId)
     {
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:overworld-fill-dirt"), WorldGenPassTypes.FillTerrain, dirtId, WorldSpaceKind.Overworld, PrimarySurfaceRegion: SurfaceRegions.DirtField));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:overworld-surface-region"), WorldGenPassTypes.SurfaceRegion, grassId, WorldSpaceKind.Overworld));
@@ -194,6 +200,8 @@ public sealed class BaseGameContentPack : IContentPack
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-stones"), WorldGenPassTypes.ScatterSpawn, stoneNodeId, WorldSpaceKind.Overworld, 10, 0, 0, 28, 18, SurfaceRegions.DirtField, 2));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-worms"), WorldGenPassTypes.ScatterSpawn, wormId, WorldSpaceKind.Overworld, 3, 0, 0, 28, 18, SurfaceRegions.DirtField, 5));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-cockroaches"), WorldGenPassTypes.ScatterSpawn, cockroachId, WorldSpaceKind.Overworld, 4, 0, 0, 28, 18, SurfaceRegions.GrassField, 5));
+        registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-mushrooms"), WorldGenPassTypes.ScatterSpawn, mushroomItemId, WorldSpaceKind.Overworld, 6, 0, 0, 28, 18, SurfaceRegions.GrassField, 2));
+        registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:spawn-poison-mushrooms"), WorldGenPassTypes.ScatterSpawn, poisonMushroomItemId, WorldSpaceKind.Overworld, 3, 0, 0, 28, 18, SurfaceRegions.GrassField, 3));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("basegame:portal-site"), WorldGenPassTypes.PortalSite, portalPlaceableId, WorldSpaceKind.Overworld));
     }
 
