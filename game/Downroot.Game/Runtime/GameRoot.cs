@@ -10,6 +10,7 @@ namespace Downroot.Game.Runtime;
 
 public partial class GameRoot : Node2D
 {
+    private const bool EnableRuntimeProfiler = false;
     private GameRuntime? _runtime;
     private GameSimulation? _simulation;
     private IInputService? _inputService;
@@ -17,6 +18,7 @@ public partial class GameRoot : Node2D
     private PlayerAnimationFactory? _animationFactory;
     private StartupOverlayController? _startupOverlay;
     private WorldRenderer? _worldRenderer;
+    private WorldLightController? _lightingPresentationController;
     private HudController? _hudController;
     private CanvasLayer? _travelOverlayLayer;
     private ColorRect? _travelOverlay;
@@ -53,6 +55,7 @@ public partial class GameRoot : Node2D
             GameInputMapInstaller.Install();
 
             _startupOverlay.UpdateStatus("Bootstrapping runtime");
+            RuntimeProfiler.Enabled = EnableRuntimeProfiler;
             RuntimeProfiler.Configure(message => GD.Print(message), frameWindow: 60);
             if (_runtime is null)
             {
@@ -81,6 +84,9 @@ public partial class GameRoot : Node2D
             _worldRenderer = new WorldRenderer(_textureLoader, _animationFactory);
             AddChild(_worldRenderer);
             _worldRenderer.Initialize(_runtime);
+            _lightingPresentationController = new WorldLightController();
+            AddChild(_lightingPresentationController);
+            _lightingPresentationController.Initialize(_runtime);
             InitializeTravelOverlay();
             _debugPanel = new DebugPanelController(this, _debugState!, new DebugCommandExecutor(_runtime, _debugState!, () => _saveAction?.Invoke(), () => _reloadAction?.Invoke()));
 
@@ -133,6 +139,7 @@ public partial class GameRoot : Node2D
         using (RuntimeProfiler.Measure("GameRoot.Renderer"))
         {
             _worldRenderer.Update(frame);
+            _lightingPresentationController?.UpdateLighting();
         }
 
         using (RuntimeProfiler.Measure("GameRoot.Hud"))

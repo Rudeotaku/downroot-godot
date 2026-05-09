@@ -1,5 +1,6 @@
 using Downroot.Core.Save;
 using Downroot.Gameplay.Runtime;
+using Downroot.Core.Ids;
 
 namespace Downroot.Gameplay.Persistence;
 
@@ -15,6 +16,10 @@ public sealed class GameSaveSnapshotBuilder
             SlotId = runtime.SaveSlotId ?? string.Empty,
             DisplayName = runtime.SaveDisplayName ?? "Quick Start",
             WorldSeed = runtime.WorldSeed,
+            Mods = new ModSelectionData
+            {
+                EnabledPackIds = runtime.EnabledPackIds.ToArray()
+            },
             ActiveWorldSpaceKind = runtime.ActiveWorldSpaceKind.ToString(),
             Player = new SavedPlayerData
             {
@@ -27,15 +32,27 @@ public sealed class GameSaveSnapshotBuilder
                 Hunger = runtime.Player.Survival.Hunger,
                 MaxHunger = runtime.Player.Survival.MaxHunger,
                 SelectedHotbarIndex = runtime.Player.SelectedHotbarIndex,
+                PrimaryBedEntityGuid = runtime.PrimaryBedEntityId?.Value.ToString("N"),
                 InventorySlots = _inventoryAdapter.Export(runtime.Player.Inventory)
             },
             TimeOfDaySeconds = runtime.WorldState.TimeOfDaySeconds,
             TotalElapsedSeconds = runtime.WorldState.TotalElapsedSeconds,
-            Worlds =
-            [
-                _worldAdapter.Export(runtime.Overworld),
-                _worldAdapter.Export(runtime.DimShardPocket)
-            ]
+            Worlds = BuildWorlds(runtime)
         };
+    }
+
+    private IReadOnlyList<SavedWorldRuntimeData> BuildWorlds(GameRuntime runtime)
+    {
+        var worlds = new List<SavedWorldRuntimeData>
+        {
+            _worldAdapter.Export(runtime.Overworld)
+        };
+
+        if (runtime.DimShardPocket is not null)
+        {
+            worlds.Add(_worldAdapter.Export(runtime.DimShardPocket));
+        }
+
+        return worlds;
     }
 }

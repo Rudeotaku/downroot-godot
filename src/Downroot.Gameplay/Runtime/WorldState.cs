@@ -24,11 +24,12 @@ public sealed class WorldState
 
             _activeWorldSpaceKind = value;
             MarkEntityProjectionDirty();
+            Lighting.SetActiveWorld(value);
         }
     }
 
     public required LoadedWorldState Overworld { get; init; }
-    public required LoadedWorldState DimShardPocket { get; init; }
+    public LoadedWorldState? DimShardPocket { get; init; }
     public WorldTravelState Travel { get; } = new();
     public float TimeOfDaySeconds { get; set; }
     public float TotalElapsedSeconds { get; set; }
@@ -42,8 +43,11 @@ public sealed class WorldState
     public DestroyProgressState? ActiveDestroyProgress { get; set; }
     public FurnaceTaskState? ActiveFurnaceTask { get; set; }
     public float PlayerHitFlashSeconds { get; set; }
+    public EntityId? PrimaryBedEntityId { get; set; }
+    public LightingRuntimeState Lighting { get; } = new();
     public long EntityProjectionVersion { get; private set; }
     public bool IsEntityProjectionDirty { get; private set; } = true;
+    public long EntityStateVersion { get; private set; }
 
     public bool IsNight(float dayLengthSeconds) => TimeOfDaySeconds >= dayLengthSeconds * 0.5f;
 
@@ -51,7 +55,7 @@ public sealed class WorldState
     {
         return ActiveWorldSpaceKind == WorldSpaceKind.Overworld
             ? Overworld
-            : DimShardPocket;
+            : DimShardPocket ?? throw new InvalidOperationException("DimShardPocket is not loaded.");
     }
 
     public void RefreshEntityProjection()
@@ -70,6 +74,21 @@ public sealed class WorldState
     public void MarkEntityProjectionDirty()
     {
         IsEntityProjectionDirty = true;
+    }
+
+    public void NotifyEntityStateChanged()
+    {
+        EntityStateVersion++;
+    }
+
+    public void NotifyLightingStructureChanged()
+    {
+        Lighting.MarkStructureDirty();
+    }
+
+    public void NotifyLightingValueChanged(LightingFieldBounds? dirtyBounds = null)
+    {
+        Lighting.MarkValueDirty(dirtyBounds);
     }
 
     public bool EnsureEntityProjectionCurrent()
@@ -112,7 +131,7 @@ public sealed class WorldState
     public bool RemoveDeleted()
     {
         var deleted = false;
-        foreach (var world in new[] { Overworld, DimShardPocket })
+        foreach (var world in EnumerateWorlds())
         {
             foreach (var chunk in world.LoadedChunks.Values)
             {
@@ -135,5 +154,14 @@ public sealed class WorldState
         }
 
         return deleted;
+    }
+
+    private IEnumerable<LoadedWorldState> EnumerateWorlds()
+    {
+        yield return Overworld;
+        if (DimShardPocket is not null)
+        {
+            yield return DimShardPocket;
+        }
     }
 }

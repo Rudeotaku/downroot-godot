@@ -23,4 +23,11 @@ public sealed record PlaceableDef(
     bool IsGroundCover = false,
     bool CanBeDestroyed = true,
     int StorageSlotCount = 0,
-    bool ConnectsToSameNeighbors = false) : ContentDef(Id, DisplayName, SourcePackId);
+    bool ConnectsToSameNeighbors = false,
+    PlaceableBehaviorKind Behaviors = PlaceableBehaviorKind.None,
+    LightEmitterDef? LightEmitter = null,
+    LightOccluderDef? LightOccluder = null,
+    SkylightMaskDef? SkylightMask = null) : ContentDef(Id, DisplayName, SourcePackId)
+{
+    public bool HasBehavior(PlaceableBehaviorKind behavior) => (Behaviors & behavior) == behavior;
+}

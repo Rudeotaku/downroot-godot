@@ -3,6 +3,7 @@ using Downroot.Core.Save;
 using Downroot.Core.World;
 using Downroot.Gameplay.Runtime;
 using Downroot.Gameplay.Runtime.Systems;
+using Downroot.Core.Ids;
 
 namespace Downroot.Gameplay.Persistence;
 
@@ -13,9 +14,13 @@ public sealed class GameSaveLoader
 
     public void Load(GameRuntime runtime, SaveGameData save)
     {
+        var worldFacade = new WorldRuntimeFacade(runtime);
         runtime.Player.Position = new Vector2(save.Player.PositionX, save.Player.PositionY);
         runtime.Player.Facing = new Vector2(save.Player.FacingX, save.Player.FacingY);
         runtime.Player.SelectedHotbarIndex = save.Player.SelectedHotbarIndex;
+        runtime.PrimaryBedEntityId = !string.IsNullOrWhiteSpace(save.Player.PrimaryBedEntityGuid) && Guid.TryParse(save.Player.PrimaryBedEntityGuid, out var bedGuid)
+            ? new EntityId(bedGuid)
+            : null;
         runtime.Player.Survival.SetHealth(save.Player.Health);
         runtime.Player.Survival.SetHunger(save.Player.Hunger);
         _inventoryAdapter.Import(runtime.Player.Inventory, save.Player.InventorySlots);
@@ -37,8 +42,23 @@ public sealed class GameSaveLoader
         }
 
         runtime.ActiveWorldSpaceKind = Enum.Parse<WorldSpaceKind>(save.ActiveWorldSpaceKind, ignoreCase: true);
-        var streamer = new WorldStreamingSystem(runtime, new WorldRuntimeFacade(runtime));
+        var streamer = new WorldStreamingSystem(runtime, worldFacade);
         streamer.UpdateLoadedChunks();
+        worldFacade.ClearPrimaryBedAssignments();
+        if (runtime.PrimaryBedEntityId is { } primaryBedId)
+        {
+            if (!worldFacade.ContainsPersistedEntity(primaryBedId))
+            {
+                runtime.PrimaryBedEntityId = null;
+            }
+            else
+            {
+                worldFacade.TryAssignPrimaryBed(primaryBedId);
+            }
+        }
+
+        runtime.WorldState.NotifyLightingStructureChanged();
+        runtime.WorldState.NotifyLightingValueChanged();
         runtime.WorldState.MarkEntityProjectionDirty();
         runtime.WorldState.RefreshEntityProjection();
     }

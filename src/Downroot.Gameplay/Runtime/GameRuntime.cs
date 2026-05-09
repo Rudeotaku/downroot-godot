@@ -4,20 +4,21 @@ using Downroot.Gameplay.Bootstrap;
 using Downroot.Core.World;
 using Downroot.World.Generation;
 using System.Numerics;
+using Downroot.Core.Ids;
 
 namespace Downroot.Gameplay.Runtime;
 
 public sealed class GameRuntime(
     ContentRegistrySet content,
     WorldGenerator overworldGenerator,
-    WorldGenerator dimShardGenerator,
+    WorldGenerator? dimShardGenerator,
     WorldState worldState,
     PlayerState player,
     GameBootstrapConfig bootstrapConfig)
 {
     public ContentRegistrySet Content { get; } = content;
     public WorldGenerator OverworldGenerator { get; } = overworldGenerator;
-    public WorldGenerator DimShardGenerator { get; } = dimShardGenerator;
+    public WorldGenerator? DimShardGenerator { get; } = dimShardGenerator;
     public WorldState WorldState { get; } = worldState;
     public PlayerState Player { get; } = player;
     public GameBootstrapConfig BootstrapConfig { get; } = bootstrapConfig;
@@ -25,6 +26,7 @@ public sealed class GameRuntime(
     public string? SaveSlotId => StartOptions?.SaveSlotId;
     public string? SaveDisplayName => StartOptions?.DisplayName;
     public int WorldSeed => StartOptions?.WorldSeed ?? BootstrapConfig.WorldSeed;
+    public IReadOnlyList<string> EnabledPackIds => StartOptions?.EnabledPackIds ?? [];
 
     public WorldSpaceKind ActiveWorldSpaceKind
     {
@@ -33,22 +35,27 @@ public sealed class GameRuntime(
     }
 
     public LoadedWorldState Overworld => WorldState.Overworld;
-    public LoadedWorldState DimShardPocket => WorldState.DimShardPocket;
+    public LoadedWorldState? DimShardPocket => WorldState.DimShardPocket;
     public int ChunkWidth => BootstrapConfig.ChunkWidth;
     public int ChunkHeight => BootstrapConfig.ChunkHeight;
+    public EntityId? PrimaryBedEntityId
+    {
+        get => WorldState.PrimaryBedEntityId;
+        set => WorldState.PrimaryBedEntityId = value;
+    }
 
     public LoadedWorldState GetWorld(WorldSpaceKind worldSpaceKind)
     {
         return worldSpaceKind == WorldSpaceKind.Overworld
             ? Overworld
-            : DimShardPocket;
+            : DimShardPocket ?? throw new InvalidOperationException("DimShardPocket is not available in this runtime.");
     }
 
     public WorldGenerator GetWorldGenerator(WorldSpaceKind worldSpaceKind)
     {
         return worldSpaceKind == WorldSpaceKind.Overworld
             ? OverworldGenerator
-            : DimShardGenerator;
+            : DimShardGenerator ?? throw new InvalidOperationException("DimShardPocket generator is not available in this runtime.");
     }
 
     public WorldTileCoord GetWorldTile(Vector2 worldPosition)

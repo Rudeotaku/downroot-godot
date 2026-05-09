@@ -8,16 +8,20 @@ namespace Downroot.Game.Runtime;
 
 public partial class AppRoot : Control
 {
+    private static readonly bool EnablePauseInputLogging = true;
     private SavePathResolver? _paths;
     private JsonFileStore? _store;
     private SaveGameRepository? _saves;
     private SettingsRepository? _settings;
+    private ModSettingsRepository? _mods;
     private SettingsApplier? _settingsApplier;
     private SessionController? _session;
     private MainMenuController? _mainMenu;
     private NewGameController? _newGame;
     private LoadGameController? _loadGame;
+    private ModManagementController? _modManagement;
     private SettingsController? _settingsPage;
+    private CanvasLayer? _pageLayer;
     private Control? _pageHost;
     private bool _pauseMenuActive;
     private Control? _currentPage;
@@ -29,12 +33,27 @@ public partial class AppRoot : Control
         _store = new JsonFileStore(_paths);
         _saves = new SaveGameRepository(_paths, _store);
         _settings = new SettingsRepository(_paths, _store);
+        _mods = new ModSettingsRepository(_paths, _store);
         _settingsApplier = new SettingsApplier();
         _settingsApplier.Apply(_settings.Load());
         GameInputMapInstaller.Install();
 
-        _pageHost = new Control { AnchorRight = 1, AnchorBottom = 1, Name = "AppPageHost", ProcessMode = Node.ProcessModeEnum.Always };
-        AddChild(_pageHost);
+        _pageLayer = new CanvasLayer
+        {
+            Name = "AppPageLayer",
+            ProcessMode = Node.ProcessModeEnum.Always,
+            Layer = 100
+        };
+        AddChild(_pageLayer);
+        _pageHost = new Control
+        {
+            AnchorRight = 1,
+            AnchorBottom = 1,
+            Name = "AppPageHost",
+            ProcessMode = Node.ProcessModeEnum.Always,
+            MouseFilter = Control.MouseFilterEnum.Stop
+        };
+        _pageLayer.AddChild(_pageHost);
         _session = new SessionController(this, _saves);
 
         _mainMenu = new MainMenuController();
@@ -42,6 +61,7 @@ public partial class AppRoot : Control
         _mainMenu.NewGameRequested += HandleNewGameRequested;
         _mainMenu.QuickStartRequested += HandleQuickStartRequested;
         _mainMenu.LoadGameRequested += HandleLoadGameRequested;
+        _mainMenu.ModManagementRequested += HandleModManagementRequested;
         _mainMenu.SettingsRequested += HandleSettingsRequested;
         _mainMenu.QuitRequested += HandleQuitRequested;
 
@@ -54,6 +74,9 @@ public partial class AppRoot : Control
         _loadGame.DeleteRequested += DeleteSlot;
         _loadGame.BackRequested += () => ShowMainMenu();
 
+        _modManagement = new ModManagementController(_mods);
+        _modManagement.BackRequested += () => ShowMainMenu();
+
         _settingsPage = new SettingsController();
         _settingsPage.ApplyRequested += ApplySettings;
         _settingsPage.BackRequested += HandleSettingsBackRequested;
@@ -61,20 +84,24 @@ public partial class AppRoot : Control
         ShowMainMenu();
     }
 
-    public override void _UnhandledInput(InputEvent @event)
+    public override void _Input(InputEvent @event)
     {
         if (@event is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
         {
             return;
         }
 
+        LogPauseInput($"Esc received paused={GetTree().Paused} pageVisible={_pageHost?.Visible} pauseMenu={_pauseMenuActive} page={_currentPage?.Name ?? "<none>"}");
+
         if (_session?.GameRoot is null)
         {
+            LogPauseInput("Esc ignored because no active session exists.");
             return;
         }
 
         if (!_pageHost!.Visible)
         {
+            LogPauseInput("Esc opening pause menu.");
             ShowPauseMenu();
             GetViewport().SetInputAsHandled();
             return;
@@ -82,6 +109,7 @@ public partial class AppRoot : Control
 
         if (_pauseMenuActive && ReferenceEquals(_currentPage, _mainMenu?.View))
         {
+            LogPauseInput("Esc resuming from pause menu.");
             ResumeSession();
             GetViewport().SetInputAsHandled();
             return;
@@ -89,6 +117,7 @@ public partial class AppRoot : Control
 
         if (_pauseMenuActive)
         {
+            LogPauseInput("Esc returning to pause root page.");
             ShowPauseMenu();
             GetViewport().SetInputAsHandled();
         }
@@ -113,9 +142,11 @@ public partial class AppRoot : Control
     {
         if (_session?.GameRoot is null)
         {
+            LogPauseInput("ShowPauseMenu skipped because session is missing.");
             return;
         }
 
+        LogPauseInput("ShowPauseMenu applying paused state.");
         GetTree().Paused = true;
         _pauseMenuActive = true;
         _pageHost!.Visible = true;
@@ -125,6 +156,7 @@ public partial class AppRoot : Control
 
     private void ResumeSession()
     {
+        LogPauseInput("ResumeSession clearing paused state.");
         _pauseMenuActive = false;
         _pageHost!.Visible = false;
         GetTree().Paused = false;
@@ -137,12 +169,35 @@ public partial class AppRoot : Control
             SlotId = slot.SlotId,
             DisplayName = slot.DisplayName,
             WorldSeed = slot.WorldSeed,
+            EnabledPackIds = slot.EnabledPackIds,
             CurrentWorldSpace = slot.CurrentWorldSpace,
             PlayerHealth = slot.PlayerHealth,
             PlayerHunger = slot.PlayerHunger,
             LastWriteUtc = slot.LastWriteUtc
         }).ToArray());
         ShowPage(_loadGame.View);
+    }
+
+    private void ShowLoadGame(string? errorMessage)
+    {
+        _loadGame!.Bind(_saves!.ListSlots().Select(slot => new SaveSlotViewData
+        {
+            SlotId = slot.SlotId,
+            DisplayName = slot.DisplayName,
+            WorldSeed = slot.WorldSeed,
+            EnabledPackIds = slot.EnabledPackIds,
+            CurrentWorldSpace = slot.CurrentWorldSpace,
+            PlayerHealth = slot.PlayerHealth,
+            PlayerHunger = slot.PlayerHunger,
+            LastWriteUtc = slot.LastWriteUtc
+        }).ToArray(), errorMessage);
+        ShowPage(_loadGame.View);
+    }
+
+    private void ShowModManagement()
+    {
+        _modManagement!.Bind();
+        ShowPage(_modManagement.View);
     }
 
     private void ShowSettings()
@@ -180,6 +235,7 @@ public partial class AppRoot : Control
                 SaveSlotId = slotId,
                 DisplayName = displayName,
                 WorldSeed = Random.Shared.Next(),
+                EnabledPackIds = _mods!.Load().EnabledPackIds,
                 IsNewGame = true
             }
         });
@@ -196,6 +252,7 @@ public partial class AppRoot : Control
                 SaveSlotId = slotId,
                 DisplayName = resolvedName,
                 WorldSeed = ResolveSeed(seedText),
+                EnabledPackIds = _mods!.Load().EnabledPackIds,
                 IsNewGame = true
             }
         });
@@ -217,6 +274,7 @@ public partial class AppRoot : Control
                 SaveSlotId = save.SlotId,
                 DisplayName = save.DisplayName,
                 WorldSeed = save.WorldSeed,
+                EnabledPackIds = save.Mods.EnabledPackIds,
                 IsNewGame = false
             },
             ExistingSave = save
@@ -240,7 +298,23 @@ public partial class AppRoot : Control
         GetTree().Paused = false;
         _pauseMenuActive = false;
         _pageHost!.Visible = false;
-        _session!.Start(request);
+        if (!_session!.Start(request))
+        {
+            _pageHost.Visible = true;
+            var errorMessage = request.ExistingSave is null
+                ? _session.LastStartError
+                : FormatLoadFailure(request.ExistingSave, _session.LastStartError);
+            ShowLoadGame(errorMessage);
+        }
+    }
+
+    private static string FormatLoadFailure(SaveGameData save, string? reason)
+    {
+        var requiredMods = save.Mods.EnabledPackIds.Count == 0
+            ? "basegame"
+            : string.Join(", ", save.Mods.EnabledPackIds);
+        var detail = string.IsNullOrWhiteSpace(reason) ? "Failed to resolve the save's mod set." : reason;
+        return $"{detail} Required mods: {requiredMods}. Enable the required built-in mods in Mod Management before loading this save.";
     }
 
     private void ShowPage(Control page)
@@ -256,7 +330,6 @@ public partial class AppRoot : Control
         }
 
         _pageHost.AddChild(page);
-        MoveChild(_pageHost, GetChildCount() - 1);
         _currentPage = page;
     }
 
@@ -301,6 +374,16 @@ public partial class AppRoot : Control
         }
 
         ShowLoadGame();
+    }
+
+    private void HandleModManagementRequested()
+    {
+        if (_pauseMenuActive)
+        {
+            return;
+        }
+
+        ShowModManagement();
     }
 
     private void HandleSettingsRequested()
@@ -351,5 +434,15 @@ public partial class AppRoot : Control
 
             return hash;
         }
+    }
+
+    private static void LogPauseInput(string message)
+    {
+        if (!EnablePauseInputLogging)
+        {
+            return;
+        }
+
+        GD.Print($"[PauseInput] {message}");
     }
 }

@@ -1,4 +1,5 @@
 using System.Numerics;
+using Downroot.Core.Definitions;
 using Downroot.Core.Ids;
 using Downroot.Core.World;
 using Downroot.World.Generation;
@@ -7,6 +8,18 @@ namespace Downroot.Gameplay.Runtime;
 
 public sealed class WorldRuntimeFacade(GameRuntime runtime)
 {
+    private IEnumerable<LoadedWorldState> Worlds
+    {
+        get
+        {
+            yield return runtime.Overworld;
+            if (runtime.DimShardPocket is not null)
+            {
+                yield return runtime.DimShardPocket;
+            }
+        }
+    }
+
     public IReadOnlyList<WorldEntityState> GetActiveProjection()
     {
         runtime.WorldState.EnsureEntityProjectionCurrent();
@@ -56,6 +69,7 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
         if (worldSpaceKind == runtime.ActiveWorldSpaceKind)
         {
             runtime.WorldState.MarkEntityProjectionDirty();
+            runtime.WorldState.NotifyLightingStructureChanged();
         }
     }
 
@@ -79,9 +93,39 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
         return GetActiveWorld().TryGetEntity(entityId, out entity);
     }
 
+    public bool ContainsPersistedEntity(EntityId entityId)
+    {
+        return Worlds.Any(world => world.ContainsPersistedEntity(entityId));
+    }
+
     public void NotifyEntityStateChanged(WorldEntityState entity)
     {
         GetWorld(entity.WorldSpaceKind).NotifyEntityStateChanged(entity);
+        if (entity.WorldSpaceKind == runtime.ActiveWorldSpaceKind)
+        {
+            runtime.WorldState.NotifyEntityStateChanged();
+            if (TryGetPlaceableDef(entity, out var placeableDef)
+                && (placeableDef.LightEmitter is not null || placeableDef.LightOccluder is not null || placeableDef.SkylightMask is not null))
+            {
+                runtime.WorldState.NotifyLightingValueChanged(ResolveLightingDirtyBounds(entity, placeableDef));
+            }
+        }
+    }
+
+    public void NotifyLightingValueChanged(WorldEntityState entity)
+    {
+        if (entity.WorldSpaceKind == runtime.ActiveWorldSpaceKind)
+        {
+            runtime.WorldState.NotifyLightingValueChanged(ResolveLightingDirtyBounds(entity));
+        }
+    }
+
+    public void NotifyLightingStructureChanged(WorldSpaceKind worldSpaceKind)
+    {
+        if (worldSpaceKind == runtime.ActiveWorldSpaceKind)
+        {
+            runtime.WorldState.NotifyLightingStructureChanged();
+        }
     }
 
     public ContentId? GetPortalDefinitionId(WorldSpaceKind worldSpaceKind)
@@ -111,5 +155,77 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
             && runtime.Content.PortalWorldLinks.Any(link =>
                 (link.SourceWorldSpaceKind == entity.WorldSpaceKind && link.SourcePortalChunk == entity.ChunkCoord)
                 || (link.TargetWorldSpaceKind == entity.WorldSpaceKind && link.TargetPortalChunk == entity.ChunkCoord));
+    }
+
+    public bool TryGetPlaceableDef(WorldEntityState entity, out PlaceableDef placeableDef)
+    {
+        if (entity.Kind == WorldEntityKind.Placeable && runtime.Content.Placeables.TryGet(entity.DefinitionId, out var def))
+        {
+            placeableDef = def!;
+            return true;
+        }
+
+        placeableDef = null!;
+        return false;
+    }
+
+    private LightingFieldBounds ResolveLightingDirtyBounds(WorldEntityState entity)
+    {
+        return TryGetPlaceableDef(entity, out var placeableDef)
+            ? ResolveLightingDirtyBounds(entity, placeableDef)
+            : LightingFieldBounds.FromTile(GetWorldTile(entity.Position));
+    }
+
+    private LightingFieldBounds ResolveLightingDirtyBounds(WorldEntityState entity, PlaceableDef placeableDef)
+    {
+        var tile = GetWorldTile(entity.Position);
+        var radius = 0;
+        if (placeableDef.LightEmitter is { } emitter)
+        {
+            radius = Math.Max(radius, (int)MathF.Ceiling(emitter.RadiusTiles));
+        }
+
+        if (placeableDef.LightOccluder is { BlocksLight: true })
+        {
+            radius = Math.Max(radius, 1);
+        }
+
+        if (placeableDef.SkylightMask is { BlocksSkylight: true })
+        {
+            radius = Math.Max(radius, 1);
+        }
+
+        return LightingFieldBounds.FromTile(tile).Expand(radius);
+    }
+
+    public void ClearPrimaryBedAssignments()
+    {
+        foreach (var world in Worlds)
+        {
+            foreach (var entity in world.ClearAssignedPrimaryBeds())
+            {
+                NotifyEntityStateChanged(entity);
+            }
+        }
+    }
+
+    public bool TryAssignPrimaryBed(EntityId entityId)
+    {
+        foreach (var world in Worlds)
+        {
+            if (!world.TryAssignPrimaryBed(entityId, out var loadedEntity))
+            {
+                continue;
+            }
+
+            if (loadedEntity is not null)
+            {
+                NotifyEntityStateChanged(loadedEntity);
+            }
+
+            return true;
+        }
+
+        return false;
     }
 }
