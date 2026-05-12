@@ -209,7 +209,7 @@ public sealed class BaseGameContentPack : IContentPack
             DebugItemId: stoneItemId,
             DebugPlaceableId: workbenchPlaceableId,
             DebugTerrainVariantId: grassId,
-            DayLengthSeconds: 90,
+            DayLengthSeconds: 1440,
             StartingHealth: 100,
             StartingHunger: 100,
             MaxHealth: 100,

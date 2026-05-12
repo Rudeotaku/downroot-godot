@@ -23,6 +23,7 @@ Downroot.Core/
 | World space enum | `World/WorldSpaceKind.cs` |
 | ID value objects | `Ids/ContentId.cs`, `Ids/EntityId.cs` |
 | Profiling | `Diagnostics/RuntimeProfiler.cs` |
+| Bootstrap config | `Gameplay/GameBootstrapConfig.cs` | Day length, player stats, spawn points |
 
 ## CONVENTIONS
 - **Records for defs** — `ContentDef` is `abstract record`; all defs derive from it
