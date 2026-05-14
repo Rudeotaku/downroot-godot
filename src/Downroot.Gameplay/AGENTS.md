@@ -7,7 +7,7 @@ Game runtime: state machines, systems, persistence, bootstrap.
 Downroot.Gameplay/
 ├── Bootstrap/            # GameBootstrapper, GameStartOptions
 ├── Runtime/              # GameRuntime, GameSimulation, player/world state
-│   └── Systems/          # Movement, Crafting, Placement, WorldStreaming, etc.
+│   └── Systems/          # Movement, Crafting, Placement, PortalTravel, WorldStreaming, etc.
 └── Persistence/          # Save/load adapters
 ```
 
@@ -15,11 +15,14 @@ Downroot.Gameplay/
 | Task | Location |
 |------|----------|
 | Main game loop | `Runtime/GameSimulation.cs` |
-| Runtime state holder | `Runtime/GameRuntime.cs` |
+| Runtime state holder | `Runtime/GameRuntime.cs` | PocketWorlds dict, lazy pocket world creation |
+| Portal travel | `Runtime/Systems/PortalTravelSystem.cs` | World switching, pocket world creation on first entry |
 | World streaming | `Runtime/Systems/WorldStreamingSystem.cs` |
-| Bootstrap / DI | `Bootstrap/GameBootstrapper.cs` |
-| Save loading | `Persistence/GameSaveLoader.cs` |
-| Snapshot builder | `Persistence/GameSaveSnapshotBuilder.cs` |
+| Bootstrap / DI | `Bootstrap/GameBootstrapper.cs` | No longer pre-creates DimShardPocket |
+| Save loading | `Persistence/GameSaveLoader.cs` | Restores all pocket worlds from save |
+| Snapshot builder | `Persistence/GameSaveSnapshotBuilder.cs` | Exports all pocket worlds |
+| World state | `Runtime/WorldState.cs` | PocketWorlds dict + ActivePocketWorldId |
+| World facade | `Runtime/WorldRuntimeFacade.cs` | Dynamic portal links, multi-world query |
 | World time / day-night cycle | `Runtime/GameSimulation.cs` → `UpdateWorldTime()` |
 | Lighting / skylight | `Runtime/Systems/LightingFieldSystem.cs` |
 | Collision / blocker index | `Runtime/LoadedWorldState.cs` | `GetCollisionCenter()`, `UpdateBlockerIndex()`, `IsBlocked()` |
@@ -33,6 +36,32 @@ Downroot.Gameplay/
 ## ANTI-PATTERNS
 - Do not let systems hold references to Godot nodes (use `WorldRuntimeFacade` abstractions)
 - Keep `RuntimeProfiler.Measure` calls shallow
+
+## PORTAL SYSTEM
+
+### Multi-Pocket-World Architecture
+Each portal on the overworld leads to its own independent `DimShardPocket` world:
+- `GameRuntime.PocketWorlds` — `Dictionary<string, LoadedWorldState>` mapping worldId → world
+- `GameRuntime.PocketGenerators` — `Dictionary<string, WorldGenerator>` for per-world generation
+- `WorldState.PocketWorlds` — synced copy for entity projection and querying
+- `WorldState.ActivePocketWorldId` — tracks which pocket world is currently active
+
+### Lazy Creation
+- Pocket worlds are NOT pre-created at bootstrap
+- `PortalTravelSystem.CreatePocketWorld()` creates them on first portal entry
+- World ID format: `dimshard:{overworldSeed}:{portalChunk.X},{portalChunk.Y}`
+- Seed derived via `GameBootstrapper.CreatePocketWorldSeed(overworldSeed, portalChunk)`
+
+### Portal Travel
+- `PortalTravelSystem.StartPortalTravel()` resolves the target pocket world (creating if needed)
+- Sets `WorldState.ActivePocketWorldId` when entering a pocket world, clears it when returning to overworld
+- `WorldRuntimeFacade.GetPortalLink()` dynamically creates `PortalWorldLinkDef` (no longer registered in content packs)
+- `IsPortalEntity()` matches entities by portal definition ID (no longer checks fixed portal links)
+
+### Save/Load
+- `GameSaveSnapshotBuilder.BuildWorlds()` iterates `runtime.PocketWorlds.Values` for all pocket worlds
+- `GameSaveLoader.Load()` recreates pocket worlds from their stable world ID, restores saved chunk data
+- Pocket world worldId encodes the portal chunk, allowing reconstruction from save data
 
 ## TIME SYSTEM
 

@@ -21,6 +21,8 @@ Downroot.Core/
 | Content definition base | `Definitions/ContentDef.cs` |
 | Save root DTO | `Save/SaveGameData.cs` |
 | World space enum | `World/WorldSpaceKind.cs` |
+| World gen pass definition | `World/WorldGenPassDef.cs` | SpawnChance, RequiredChunkCoord, MinChunkSpacing for portal generation |
+| Portal world link def | `World/PortalWorldLinkDef.cs` |
 | ID value objects | `Ids/ContentId.cs`, `Ids/EntityId.cs` |
 | Profiling | `Diagnostics/RuntimeProfiler.cs` |
 | Bootstrap config | `Gameplay/GameBootstrapConfig.cs` | Day length, player stats, spawn points |

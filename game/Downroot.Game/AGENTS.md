@@ -23,7 +23,7 @@ Downroot.Game/
 | Main scene / app root | `Runtime/AppRoot.cs` |
 | In-game session | `Runtime/SessionController.cs` |
 | HUD rendering | `Runtime/HudController.cs`, `Runtime/HudView.cs` |
-| World rendering | `Runtime/WorldRenderer.cs` |
+| World rendering | `Runtime/WorldRenderer.cs` | Camera2D Zoom, terrain/entity sprites, chunk visuals |
 | Save repository | `Infrastructure/SaveGameRepository.cs` |
 | JSON file store | `Infrastructure/JsonFileStore.cs` |
 

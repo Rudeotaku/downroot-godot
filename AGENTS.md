@@ -27,13 +27,16 @@ Downroot — Godot 4.6 + C# (.NET 8) 2D farming/survival game with dimensional s
 | Entry point | `game/Downroot.Game/Runtime/AppRoot.cs` | Main scene controller, page navigation |
 | Game bootstrap | `src/Downroot.Gameplay/Bootstrap/GameBootstrapper.cs` | DI setup, world creation, save loading |
 | World generation | `src/Downroot.World/Generation/Passes/` | Per-pass terrain/feature generation |
+| Portal generation | `src/Downroot.World/Generation/Passes/PortalSitePass.cs` | Probabilistic portal spawn, min spacing |
+| Pocket world management | `src/Downroot.Gameplay/Runtime/GameRuntime.cs` | PocketWorlds dict, lazy creation |
+| Portal travel | `src/Downroot.Gameplay/Runtime/Systems/PortalTravelSystem.cs` | World switching, lazy pocket world init |
 | Game simulation | `src/Downroot.Gameplay/Runtime/GameSimulation.cs` | Main tick loop |
 | Day-night cycle | `src/Downroot.Gameplay/Runtime/GameSimulation.cs` → `UpdateWorldTime()` | `DayLengthSeconds` controls cycle duration |
 | Lighting | `src/Downroot.Gameplay/Runtime/Systems/LightingFieldSystem.cs` | Skylight + emitter field |
 | Content definitions | `src/Downroot.Core/Definitions/` | Abstract `ContentDef` record hierarchy |
 | Save/load | `src/Downroot.Core/Save/` + `game/.../Infrastructure/` | JSON file store, repositories |
 | UI presentation | `src/Downroot.UI/Presentation/` | ViewData records, `GamePresentationBuilder` |
-| Godot rendering | `game/Downroot.Game/Runtime/WorldRenderer.cs` | Largest file (706 lines) |
+| Godot rendering | `game/Downroot.Game/Runtime/WorldRenderer.cs` | Camera2D, terrain/entity sprites, chunk visuals |
 | Content packs | `packs/basegame/` + `docs/PACKS.md` | Asset/ddef/scene conventions |
 | Basegame assets | `packs/basegame/assets/README.md` | Asset layout, naming rules, atlas notes |
 
@@ -43,9 +46,13 @@ Downroot — Godot 4.6 + C# (.NET 8) 2D farming/survival game with dimensional s
 |--------|------|----------|------|
 | AppRoot | class | game/Runtime/AppRoot.cs | Main scene, page host, session lifecycle |
 | GameBootstrapper | class | src/Gameplay/Bootstrap/ | DI composition, world init, save restore |
-| GameRuntime | class | src/Gameplay/Runtime/ | Central runtime state holder |
+| GameRuntime | class | src/Gameplay/Runtime/ | Central runtime state holder (PocketWorlds dict) |
 | GameSimulation | class | src/Gameplay/Runtime/ | Tick loop, system orchestration |
 | WorldGenerator | class | src/World/Generation/ | Chunk generation coordinator |
+| PortalSitePass | class | src/World/Generation/Passes/ | Probabilistic portal spawn (SpawnChance, MinChunkSpacing) |
+| PortalTravelSystem | class | src/Gameplay/Runtime/Systems/ | Portal travel, lazy pocket world creation |
+| WorldRuntimeFacade | class | src/Gameplay/Runtime/ | Dynamic portal links, world query facade |
+| WorldState | class | src/Gameplay/Runtime/ | Active world tracking (PocketWorlds dict, ActivePocketWorldId) |
 | ContentRegistrySet | class | src/Content/Registries/ | Aggregated content registries |
 | ContentDef | record | src/Core/Definitions/ | Base definition type |
 | SaveGameData | class | src/Core/Save/ | Root save DTO |
@@ -68,7 +75,7 @@ Downroot — Godot 4.6 + C# (.NET 8) 2D farming/survival game with dimensional s
 
 ## UNIQUE STYLES
 - **Content pack system** — runtime scans `packs/*`, each pack registers via `IContentPack`
-- **World space kinds** — Overworld + DimShardPocket with portal links
+- **World space kinds** — Overworld + DimShardPocket with probabilistic portal generation
 - **Entity projection** — `GameRuntime` maintains a flattened entity view for rendering
 - **Chunk-based streaming** — radius-based load/unload with `WorldStreamingSystem`
 
@@ -121,3 +128,30 @@ The game uses **dual time tracking** with no time-scale multiplier:
   - `GetPlaceableCollisionCenter()` — new method
   - `UpdateBlockerIndex()` — uses collision center for tile indexing
   - `IsBlocked()` — uses collision center for distance checks
+
+## PORTAL SYSTEM
+
+### Probabilistic Portal Generation
+Portals spawn on Overworld chunks via `PortalSitePass` with deterministic, seed-based probability:
+- **SpawnChance**: 20% per chunk (`PortalModContentPack.cs`)
+- **MinChunkSpacing**: 3 — Poisson-like grid sampling ensures no two portals within 3 chunks
+- **Deterministic**: `GetStableUnitValue` guarantees same seed always produces same portal layout
+- No portal positions are stored in saves — they are regenerated identically on reload
+
+### Multi-Pocket-World Architecture
+Each portal leads to its own independent `DimShardPocket` world:
+- **World ID format**: `dimshard:{overworldSeed}:{chunkX},{chunkY}` — encodes everything needed to reconstruct
+- **Pocket world size**: 3×3 chunks (from -1,-1 to 1,1), same as original
+- **Return portal**: always in chunk (0,0) of the pocket world (`RequiredChunkCoord`)
+- **Content**: dimfrag terrain + frostcore ore + rocks + return portal
+
+### Lazy Creation & Persistence
+- Pocket worlds are created **lazily** on first portal entry (not at boot)
+- Both `GameRuntime` and `WorldState` hold `PocketWorlds` dictionaries (kept in sync)
+- `ActivePocketWorldId` on `WorldState` tracks which pocket world is currently active
+- Save/load serializes all pocket worlds — modifications (placed items, destroyed resources) persist
+
+### Camera
+- `WorldRenderer` creates a `Camera2D` as child of player body with configurable `Zoom` parameter
+- Godot's built-in frustum culling skips off-screen sprites automatically
+- Chunk loading radius (`OverworldLoadRadius = 1`) comfortably covers the viewport at default zoom
