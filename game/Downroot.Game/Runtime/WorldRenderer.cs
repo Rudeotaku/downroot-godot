@@ -5,8 +5,11 @@ using Downroot.Core.World;
 using Downroot.Core.Diagnostics;
 using Downroot.Game.Infrastructure;
 using Downroot.Gameplay.Runtime;
+using Downroot.World.Generation;
 using Godot;
 using NumericsVector2 = System.Numerics.Vector2;
+using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace Downroot.Game.Runtime;
 
@@ -19,6 +22,11 @@ public sealed partial class WorldRenderer : Node2D
     private const int EntityBandLayerZ = 768;
     private const int ChunkBoundsLayerZ = 1536;
     private const int MaxEntitySortSpan = 1023;
+    private const double ChunkTerrainAttachBudgetMsPerFrame = 1.25d;
+    private const int ChunkTerrainAttachHardSpriteCapPerFrame = 32;
+    private const float BaseCameraZoom = 2.5f;
+    private const float TemporaryZoomOutFactor = 5f;
+    private const float CameraZoomLerpSpeed = 14f;
 
     private readonly TextureContentLoader _textureLoader;
     private readonly PlayerAnimationFactory _animationFactory;
@@ -29,18 +37,24 @@ public sealed partial class WorldRenderer : Node2D
     private readonly HashSet<EntityId> _dynamicEntityIds = [];
     private readonly HashSet<EntityId> _staticEntityIds = [];
     private readonly Dictionary<ChunkCoord, ChunkVisualState> _chunkVisuals = [];
+    private readonly Dictionary<ChunkCoord, PendingChunkTerrainBuild> _pendingChunkTerrainBuilds = [];
+    private readonly Dictionary<ChunkCoord, PendingChunkTerrainAttach> _pendingChunkTerrainAttaches = [];
+    private readonly Queue<ChunkCoord> _pendingChunkTerrainAttachOrder = [];
 
     private GameRuntime? _runtime;
     private WorldRuntimeFacade? _worldFacade;
+    private SurfaceSemanticSampler? _surfaceSemanticSampler;
     private Node2D? _terrainLayer;
     private Node2D? _entityLayer;
     private CharacterBody2D? _playerBody;
     private AnimatedSprite2D? _playerSprite;
+    private Camera2D? _camera;
     private string _lastFacing = "down";
     private WorldSpaceKind? _lastRenderedWorldSpaceKind;
     private long _lastChunkVisualVersion = -1;
     private long _lastEntityProjectionVersion = -1;
     private long _lastLightingFieldVersion = -1;
+    private long _nextChunkTerrainBuildRequestId;
     private bool _showChunkBounds;
 
     public WorldRenderer(TextureContentLoader textureLoader, PlayerAnimationFactory animationFactory)
@@ -54,6 +68,7 @@ public sealed partial class WorldRenderer : Node2D
     {
         _runtime = runtime;
         _worldFacade = new WorldRuntimeFacade(runtime);
+        _surfaceSemanticSampler = new SurfaceSemanticSampler(_worldFacade, runtime);
         _terrainLayer = new Node2D { Name = "TerrainLayer", ZIndex = TerrainLayerZ };
         _entityLayer = new Node2D { Name = "EntityLayer" };
         AddChild(_terrainLayer);
@@ -99,6 +114,7 @@ public sealed partial class WorldRenderer : Node2D
             }
 
             _playerSprite.Modulate = ResolvePlayerModulate();
+            UpdateCameraZoom(frame.ZoomOutHeld);
         }
 
         using (RuntimeProfiler.Measure("WorldRenderer.SyncWorldVisuals"))
@@ -129,6 +145,14 @@ public sealed partial class WorldRenderer : Node2D
         foreach (var terrain in runtime.Content.Terrains.All)
         {
             _ = ResolveTerrainTexture(terrain, terrain.AtlasColumn, terrain.AtlasRow);
+        }
+
+        foreach (var layerDef in DualGridLayerCatalog.All)
+        {
+            for (var variantIndex = CoverDualGridResolver.Empty; variantIndex <= CoverDualGridResolver.Full; variantIndex++)
+            {
+                _ = ResolveDualGridTerrainTexture(layerDef, variantIndex);
+            }
         }
 
         foreach (var item in runtime.Content.Items.All)
@@ -193,6 +217,9 @@ public sealed partial class WorldRenderer : Node2D
             _lastChunkVisualVersion = activeWorld.ChunkVisualVersion;
         }
 
+        CollectCompletedChunkTerrainBuilds();
+        ProcessPendingChunkTerrainAttaches(ChunkTerrainAttachBudgetMsPerFrame, ChunkTerrainAttachHardSpriteCapPerFrame);
+
         if (_lastEntityProjectionVersion != _runtime!.WorldState.EntityProjectionVersion)
         {
             SynchronizeEntityStructure();
@@ -202,10 +229,14 @@ public sealed partial class WorldRenderer : Node2D
 
     private void SynchronizeChunks()
     {
+        using var scope = RuntimeProfiler.Measure("WorldRenderer.SynchronizeChunks");
         var world = _worldFacade!.GetActiveWorld();
+        var centerChunk = _worldFacade.GetChunkCoord(_runtime!.Player.Position);
         var desiredChunks = world.LoadedChunks.Keys.ToHashSet();
         foreach (var staleChunk in _chunkVisuals.Keys.Where(coord => !desiredChunks.Contains(coord)).ToArray())
         {
+            _pendingChunkTerrainBuilds.Remove(staleChunk);
+            _pendingChunkTerrainAttaches.Remove(staleChunk);
             _chunkVisuals[staleChunk].BoundsRoot.QueueFree();
             _chunkVisuals[staleChunk].TerrainRoot.QueueFree();
             _chunkVisuals[staleChunk].RaisedFeatureRoot.QueueFree();
@@ -213,7 +244,10 @@ public sealed partial class WorldRenderer : Node2D
             _chunkVisuals.Remove(staleChunk);
         }
 
-        foreach (var pair in world.LoadedChunks.OrderBy(pair => pair.Key.Y).ThenBy(pair => pair.Key.X))
+        foreach (var pair in world.LoadedChunks
+                     .OrderBy(pair => GetChunkPriority(pair.Key, centerChunk))
+                     .ThenBy(pair => pair.Key.Y)
+                     .ThenBy(pair => pair.Key.X))
         {
             if (_chunkVisuals.ContainsKey(pair.Key))
             {
@@ -229,7 +263,8 @@ public sealed partial class WorldRenderer : Node2D
             _terrainLayer.AddChild(boundsRoot);
             _entityLayer!.AddChild(entityRoot);
             _chunkVisuals.Add(pair.Key, new ChunkVisualState(terrainRoot, raisedFeatureRoot, entityRoot, boundsRoot));
-            BuildChunkTerrain(pair.Value.GeneratedChunk, _chunkVisuals[pair.Key]);
+            RuntimeProfiler.Increment("WorldRenderer.NewChunkVisual");
+            QueueChunkTerrainBuild(pair.Value);
             BuildChunkRaisedFeatures(pair.Value, _chunkVisuals[pair.Key]);
         }
     }
@@ -256,35 +291,398 @@ public sealed partial class WorldRenderer : Node2D
         _entitySpriteChunks.Clear();
         _dynamicEntityIds.Clear();
         _staticEntityIds.Clear();
+        _pendingChunkTerrainBuilds.Clear();
+        _pendingChunkTerrainAttaches.Clear();
+        _pendingChunkTerrainAttachOrder.Clear();
         _lastChunkVisualVersion = -1;
         _lastEntityProjectionVersion = -1;
         _lastLightingFieldVersion = -1;
     }
 
-    private void BuildChunkTerrain(Downroot.World.Models.GeneratedChunk chunk, ChunkVisualState visual)
+    private void QueueChunkTerrainBuild(ChunkRuntimeState chunk)
     {
-        var terrainRoot = visual.TerrainRoot;
+        using var scope = RuntimeProfiler.Measure("WorldRenderer.QueueChunkTerrainBuild");
+        var requestId = ++_nextChunkTerrainBuildRequestId;
+        var snapshot = CaptureChunkTerrainBuildSnapshot(chunk.GeneratedChunk);
+        _pendingChunkTerrainBuilds[chunk.GeneratedChunk.Coord] = new PendingChunkTerrainBuild(
+            requestId,
+            Task.Run(() => BuildChunkTerrainDescriptors(snapshot)));
+        _chunkVisuals[chunk.GeneratedChunk.Coord].TerrainBuildRequestId = requestId;
+    }
+
+    private ChunkTerrainBuildSnapshot CaptureChunkTerrainBuildSnapshot(Downroot.World.Models.GeneratedChunk chunk)
+    {
+        using var scope = RuntimeProfiler.Measure("WorldRenderer.CaptureChunkTerrainSnapshot");
         var chunkOriginTile = WorldTileCoord.FromChunkAndLocal(chunk.Coord, new LocalTileCoord(0, 0), _runtime!.ChunkWidth, _runtime.ChunkHeight);
-        for (var y = 0; y < chunk.Surface.Height; y++)
+        var width = chunk.Surface.Width;
+        var height = chunk.Surface.Height;
+        var semantics = new SurfaceTileSemantic[width * height];
+        var baseTerrainIds = new ContentId?[width * height];
+        var coverTerrainIds = new ContentId?[width * height];
+        // Overlay and base dual-grid ownership must stay separate.
+        // Dirt is resolved through the base channel, while grass/beach/deep-water
+        // are additional overlays on top of that base visual.
+        var overlayDualGridVisualWindow = new TerrainVisualKind[(width + 1) * (height + 1)];
+        var baseDualGridVisualWindow = new TerrainVisualKind?[(width + 1) * (height + 1)];
+
+        for (var y = 0; y < height; y++)
         {
-            for (var x = 0; x < chunk.Surface.Width; x++)
+            for (var x = 0; x < width; x++)
             {
-                var terrainId = chunk.Surface.GetTerrainId(x, y) ?? _runtime.BootstrapConfig.DefaultTerrainId;
-                var terrainDef = _runtime.Content.Terrains.Get(terrainId);
-                var worldTile = new WorldTileCoord(chunkOriginTile.X + x, chunkOriginTile.Y + y);
-                var (atlasColumn, atlasRow) = ResolveTerrainVariant(terrainDef, worldTile);
-                var sprite = new Sprite2D
-                {
-                    Name = $"Terrain_{x}_{y}",
-                    Centered = false,
-                    Texture = ResolveTerrainTexture(terrainDef, atlasColumn, atlasRow),
-                    Position = new Vector2(worldTile.X * TileSize, worldTile.Y * TileSize),
-                    Modulate = ResolveTileBrightnessColor(worldTile)
-                };
-                terrainRoot.AddChild(sprite);
-                visual.TerrainSprites[worldTile] = sprite;
+                var index = ToTileIndex(x, y, width);
+                semantics[index] = chunk.Surface.GetSurfaceSemantic(x, y);
+                baseTerrainIds[index] = chunk.Surface.GetBaseTerrainId(x, y);
+                coverTerrainIds[index] = chunk.Surface.GetCoverTerrainId(x, y);
             }
         }
+
+        for (var cornerY = 0; cornerY <= height; cornerY++)
+        {
+            for (var cornerX = 0; cornerX <= width; cornerX++)
+            {
+                var sampleTile = new WorldTileCoord(chunkOriginTile.X + cornerX - 1, chunkOriginTile.Y + cornerY - 1);
+                var semantic = _worldFacade!.SampleSurfaceSemantic(chunk.WorldSpaceKind, sampleTile);
+                var renderProfile = TerrainVisualRenderResolver.Resolve(
+                    chunk.WorldSpaceKind,
+                    semantic,
+                    _runtime.BootstrapConfig.DefaultTerrainId,
+                    null);
+                var cornerIndex = ToCornerIndex(cornerX, cornerY, width + 1);
+                overlayDualGridVisualWindow[cornerIndex] = semantic.Visual;
+                baseDualGridVisualWindow[cornerIndex] = renderProfile.BaseDualGridVisualKind;
+            }
+        }
+
+        return new ChunkTerrainBuildSnapshot(
+            chunk.WorldSpaceKind,
+            chunk.Coord,
+            chunkOriginTile,
+            width,
+            height,
+            _runtime.BootstrapConfig.DefaultTerrainId,
+            semantics,
+            baseTerrainIds,
+            coverTerrainIds,
+            overlayDualGridVisualWindow,
+            baseDualGridVisualWindow);
+    }
+
+    private static ChunkTerrainBuildResult BuildChunkTerrainDescriptors(ChunkTerrainBuildSnapshot snapshot)
+    {
+        using var scope = RuntimeProfiler.Measure("WorldRenderer.BuildChunkTerrainDescriptors");
+        var baseTerrains = new List<BaseTerrainSpriteDescriptor>(snapshot.Width * snapshot.Height);
+        var coverTerrains = new List<CoverTerrainSpriteDescriptor>();
+        var deepWaterTerrains = new List<DualGridTerrainSpriteDescriptor>();
+        var beachTerrains = new List<DualGridTerrainSpriteDescriptor>();
+        var grassTerrains = new List<DualGridTerrainSpriteDescriptor>();
+        var dirtBaseTerrains = new List<DualGridTerrainSpriteDescriptor>();
+
+        for (var y = 0; y < snapshot.Height; y++)
+        {
+            for (var x = 0; x < snapshot.Width; x++)
+            {
+                var index = ToTileIndex(x, y, snapshot.Width);
+                var worldTile = new WorldTileCoord(snapshot.ChunkOriginTile.X + x, snapshot.ChunkOriginTile.Y + y);
+                var renderProfile = TerrainVisualRenderResolver.Resolve(
+                    snapshot.WorldSpaceKind,
+                    snapshot.Semantics[index],
+                    snapshot.BaseTerrainIds[index] ?? snapshot.DefaultBaseTerrainId,
+                    snapshot.CoverTerrainIds[index]);
+                if (renderProfile.BaseTerrainId is { } baseTerrainId)
+                {
+                    baseTerrains.Add(new BaseTerrainSpriteDescriptor(worldTile, baseTerrainId, renderProfile.BaseTint));
+                }
+
+                if (snapshot.CoverTerrainIds[index] is { } coverTerrainId && renderProfile.RenderLegacyCover)
+                {
+                    coverTerrains.Add(new CoverTerrainSpriteDescriptor(worldTile, coverTerrainId));
+                }
+            }
+        }
+
+        // Base dual-grid layers replace flat base tiles for their terrain family.
+        // Do not reintroduce a second base dirt sprite path on top of this.
+        foreach (var layerDef in TerrainVisualRenderResolver.BaseDualGridLayers)
+        {
+            for (var y = 0; y < snapshot.Height; y++)
+            {
+                for (var x = 0; x < snapshot.Width; x++)
+                {
+                    var topLeft = snapshot.BaseDualGridVisualWindow[ToCornerIndex(x, y, snapshot.Width + 1)] == layerDef.VisualKind;
+                    var topRight = snapshot.BaseDualGridVisualWindow[ToCornerIndex(x + 1, y, snapshot.Width + 1)] == layerDef.VisualKind;
+                    var bottomLeft = snapshot.BaseDualGridVisualWindow[ToCornerIndex(x, y + 1, snapshot.Width + 1)] == layerDef.VisualKind;
+                    var bottomRight = snapshot.BaseDualGridVisualWindow[ToCornerIndex(x + 1, y + 1, snapshot.Width + 1)] == layerDef.VisualKind;
+                    var variantIndex = CoverDualGridResolver.ResolveVariantIndex(topLeft, topRight, bottomLeft, bottomRight);
+                    if (variantIndex == CoverDualGridResolver.Empty)
+                    {
+                        continue;
+                    }
+
+                    dirtBaseTerrains.Add(new DualGridTerrainSpriteDescriptor(
+                        new WorldTileCoord(snapshot.ChunkOriginTile.X + x, snapshot.ChunkOriginTile.Y + y),
+                        layerDef.VisualKind,
+                        variantIndex));
+                }
+            }
+        }
+        // Overlay dual-grid layers are additive and intentionally drawn after the base.
+        foreach (var layerDef in TerrainVisualRenderResolver.OverlayDualGridLayers)
+        {
+            var bucket = layerDef.VisualKind switch
+            {
+                TerrainVisualKind.DeepWater => deepWaterTerrains,
+                TerrainVisualKind.Beach => beachTerrains,
+                TerrainVisualKind.Grass => grassTerrains,
+                _ => throw new ArgumentOutOfRangeException(nameof(layerDef), $"Unsupported overlay dual-grid layer '{layerDef.VisualKind}'.")
+            };
+
+            for (var y = 0; y < snapshot.Height; y++)
+            {
+                for (var x = 0; x < snapshot.Width; x++)
+                {
+                    var topLeft = snapshot.OverlayDualGridVisualWindow[ToCornerIndex(x, y, snapshot.Width + 1)] == layerDef.VisualKind;
+                    var topRight = snapshot.OverlayDualGridVisualWindow[ToCornerIndex(x + 1, y, snapshot.Width + 1)] == layerDef.VisualKind;
+                    var bottomLeft = snapshot.OverlayDualGridVisualWindow[ToCornerIndex(x, y + 1, snapshot.Width + 1)] == layerDef.VisualKind;
+                    var bottomRight = snapshot.OverlayDualGridVisualWindow[ToCornerIndex(x + 1, y + 1, snapshot.Width + 1)] == layerDef.VisualKind;
+                    var variantIndex = CoverDualGridResolver.ResolveVariantIndex(topLeft, topRight, bottomLeft, bottomRight);
+                    if (variantIndex == CoverDualGridResolver.Empty)
+                    {
+                        continue;
+                    }
+
+                    bucket.Add(new DualGridTerrainSpriteDescriptor(
+                        new WorldTileCoord(snapshot.ChunkOriginTile.X + x, snapshot.ChunkOriginTile.Y + y),
+                        layerDef.VisualKind,
+                        variantIndex));
+                }
+            }
+        }
+
+        return new ChunkTerrainBuildResult(
+            snapshot.ChunkCoord,
+            baseTerrains.ToArray(),
+            coverTerrains.ToArray(),
+            dirtBaseTerrains.ToArray(),
+            deepWaterTerrains.ToArray(),
+            beachTerrains.ToArray(),
+            grassTerrains.ToArray());
+    }
+
+    private void CollectCompletedChunkTerrainBuilds()
+    {
+        if (_pendingChunkTerrainBuilds.Count == 0)
+        {
+            return;
+        }
+
+        var centerChunk = _worldFacade!.GetChunkCoord(_runtime!.Player.Position);
+        foreach (var pair in _pendingChunkTerrainBuilds
+                     .Where(pair => pair.Value.Task.IsCompleted)
+                     .OrderBy(pair => GetChunkPriority(pair.Key, centerChunk))
+                     .ThenBy(pair => pair.Key.Y)
+                     .ThenBy(pair => pair.Key.X)
+                     .ToArray())
+        {
+            _pendingChunkTerrainBuilds.Remove(pair.Key);
+            if (!_chunkVisuals.TryGetValue(pair.Key, out var visual) || visual.TerrainBuildRequestId != pair.Value.RequestId)
+            {
+                continue;
+            }
+
+            var buildResult = pair.Value.Task.GetAwaiter().GetResult();
+            _pendingChunkTerrainAttaches[pair.Key] = new PendingChunkTerrainAttach(pair.Value.RequestId, buildResult);
+            _pendingChunkTerrainAttachOrder.Enqueue(pair.Key);
+        }
+    }
+
+    private void ProcessPendingChunkTerrainAttaches(double timeBudgetMs, int hardSpriteCap)
+    {
+        using var scope = RuntimeProfiler.Measure("WorldRenderer.AttachChunkTerrainBudget");
+        var startedAt = Stopwatch.GetTimestamp();
+        var attachedThisFrame = 0;
+        while (attachedThisFrame < hardSpriteCap && _pendingChunkTerrainAttachOrder.Count > 0)
+        {
+            var coord = _pendingChunkTerrainAttachOrder.Peek();
+            if (!_pendingChunkTerrainAttaches.TryGetValue(coord, out var pendingAttach))
+            {
+                _pendingChunkTerrainAttachOrder.Dequeue();
+                continue;
+            }
+
+            if (!_chunkVisuals.TryGetValue(coord, out var visual) || visual.TerrainBuildRequestId != pendingAttach.RequestId)
+            {
+                _pendingChunkTerrainAttaches.Remove(coord);
+                _pendingChunkTerrainAttachOrder.Dequeue();
+                continue;
+            }
+
+            var remainingSpriteBudget = hardSpriteCap - attachedThisFrame;
+            var attachedSprites = AttachChunkTerrainSprites(visual, pendingAttach, remainingSpriteBudget, startedAt, timeBudgetMs);
+            if (attachedSprites <= 0)
+            {
+                break;
+            }
+
+            attachedThisFrame += attachedSprites;
+            if (pendingAttach.IsCompleted)
+            {
+                _pendingChunkTerrainAttaches.Remove(coord);
+                _pendingChunkTerrainAttachOrder.Dequeue();
+                visual.IsTerrainReady = true;
+                RuntimeProfiler.Increment("WorldRenderer.CompletedChunkTerrain");
+                continue;
+            }
+
+            if (attachedThisFrame >= hardSpriteCap || ElapsedMilliseconds(startedAt) >= timeBudgetMs)
+            {
+                break;
+            }
+
+            break;
+        }
+    }
+
+    private int AttachChunkTerrainSprites(
+        ChunkVisualState visual,
+        PendingChunkTerrainAttach pendingAttach,
+        int spriteBudget,
+        long startedAt,
+        double timeBudgetMs)
+    {
+        var remaining = spriteBudget;
+        remaining -= AttachBaseTerrainSprites(visual, pendingAttach, remaining, startedAt, timeBudgetMs);
+        remaining -= AttachCoverTerrainSprites(visual, pendingAttach, remaining, startedAt, timeBudgetMs);
+        remaining -= AttachDualGridTerrainSprites(visual, pendingAttach, pendingAttach.BuildResult.BaseDualGridTerrains, pendingAttach.BaseDualGridIndex, visual.BaseDualGridSprites, remaining, startedAt, timeBudgetMs);
+        remaining -= AttachDualGridTerrainSprites(visual, pendingAttach, pendingAttach.BuildResult.DeepWaterTerrains, pendingAttach.DeepWaterIndex, visual.DeepWaterSprites, remaining, startedAt, timeBudgetMs);
+        remaining -= AttachDualGridTerrainSprites(visual, pendingAttach, pendingAttach.BuildResult.BeachTerrains, pendingAttach.BeachIndex, visual.BeachSprites, remaining, startedAt, timeBudgetMs);
+        remaining -= AttachDualGridTerrainSprites(visual, pendingAttach, pendingAttach.BuildResult.GrassTerrains, pendingAttach.GrassIndex, visual.GrassSprites, remaining, startedAt, timeBudgetMs);
+        return spriteBudget - remaining;
+    }
+
+    private int AttachBaseTerrainSprites(
+        ChunkVisualState visual,
+        PendingChunkTerrainAttach pendingAttach,
+        int spriteBudget,
+        long startedAt,
+        double timeBudgetMs)
+    {
+        var attached = 0;
+        while (attached < spriteBudget && pendingAttach.BaseIndex < pendingAttach.BuildResult.BaseTerrains.Length)
+        {
+            var descriptor = pendingAttach.BuildResult.BaseTerrains[pendingAttach.BaseIndex++];
+            var terrainDef = _runtime!.Content.Terrains.Get(descriptor.TerrainId);
+            var sprite = CreateTerrainSprite($"BaseTerrain_{descriptor.Tile.X}_{descriptor.Tile.Y}", descriptor.Tile, terrainDef, 0, descriptor.BaseTint);
+            visual.TerrainRoot.AddChild(sprite);
+            visual.BaseTerrainSprites[descriptor.Tile] = sprite;
+            visual.BaseTerrainTints[descriptor.Tile] = descriptor.BaseTint;
+            attached++;
+            if (ElapsedMilliseconds(startedAt) >= timeBudgetMs)
+            {
+                break;
+            }
+        }
+
+        return attached;
+    }
+
+    private int AttachCoverTerrainSprites(
+        ChunkVisualState visual,
+        PendingChunkTerrainAttach pendingAttach,
+        int spriteBudget,
+        long startedAt,
+        double timeBudgetMs)
+    {
+        var attached = 0;
+        while (attached < spriteBudget && pendingAttach.CoverIndex < pendingAttach.BuildResult.CoverTerrains.Length)
+        {
+            var descriptor = pendingAttach.BuildResult.CoverTerrains[pendingAttach.CoverIndex++];
+            var terrainDef = _runtime!.Content.Terrains.Get(descriptor.TerrainId);
+            var sprite = CreateTerrainSprite($"CoverTerrain_{descriptor.Tile.X}_{descriptor.Tile.Y}", descriptor.Tile, terrainDef, 1);
+            visual.TerrainRoot.AddChild(sprite);
+            visual.CoverTerrainSprites[descriptor.Tile] = sprite;
+            attached++;
+            if (ElapsedMilliseconds(startedAt) >= timeBudgetMs)
+            {
+                break;
+            }
+        }
+
+        return attached;
+    }
+
+    private int AttachDualGridTerrainSprites(
+        ChunkVisualState visual,
+        PendingChunkTerrainAttach pendingAttach,
+        DualGridTerrainSpriteDescriptor[] descriptors,
+        int currentIndex,
+        Dictionary<WorldTileCoord, Sprite2D> spriteBucket,
+        int spriteBudget,
+        long startedAt,
+        double timeBudgetMs)
+    {
+        var attached = 0;
+        while (attached < spriteBudget && currentIndex < descriptors.Length)
+        {
+            var descriptor = descriptors[currentIndex];
+            var sprite = CreateDualGridTerrainSprite(descriptor.Tile, ResolveDualGridLayerDef(descriptor.VisualKind), descriptor.VariantIndex);
+            visual.TerrainRoot.AddChild(sprite);
+            spriteBucket[descriptor.Tile] = sprite;
+            currentIndex++;
+            attached++;
+            if (ElapsedMilliseconds(startedAt) >= timeBudgetMs)
+            {
+                break;
+            }
+        }
+
+        pendingAttach.SetLayerIndex(descriptors, currentIndex);
+        return attached;
+    }
+
+    private static double ElapsedMilliseconds(long startedAt)
+    {
+        return Stopwatch.GetElapsedTime(startedAt, Stopwatch.GetTimestamp()).TotalMilliseconds;
+    }
+
+    private Sprite2D CreateTerrainSprite(string name, WorldTileCoord worldTile, TerrainDef terrainDef, int zIndex, Color? baseTint = null)
+    {
+        var (atlasColumn, atlasRow) = ResolveTerrainVariant(terrainDef, worldTile);
+        return new Sprite2D
+        {
+            Name = name,
+            Centered = false,
+            Texture = ResolveTerrainTexture(terrainDef, atlasColumn, atlasRow),
+            Position = new Vector2(worldTile.X * TileSize, worldTile.Y * TileSize),
+            Modulate = ResolveTileBrightnessColor(worldTile, baseTint ?? Colors.White),
+            ZIndex = zIndex
+        };
+    }
+
+    private static DualGridLayerDef ResolveDualGridLayerDef(TerrainVisualKind visualKind)
+    {
+        return visualKind switch
+        {
+            TerrainVisualKind.Dirt => DualGridLayerCatalog.Dirt,
+            TerrainVisualKind.DeepWater => DualGridLayerCatalog.DeepWater,
+            TerrainVisualKind.Beach => DualGridLayerCatalog.Beach,
+            TerrainVisualKind.Grass => DualGridLayerCatalog.Grass,
+            _ => throw new ArgumentOutOfRangeException(nameof(visualKind), $"Unsupported dual-grid visual '{visualKind}'.")
+        };
+    }
+
+    private Sprite2D CreateDualGridTerrainSprite(WorldTileCoord displayTile, DualGridLayerDef layerDef, int variantIndex)
+    {
+        return new Sprite2D
+        {
+            Name = $"{layerDef.VisualKind}_{displayTile.X}_{displayTile.Y}",
+            Centered = false,
+            Texture = ResolveDualGridTerrainTexture(layerDef, variantIndex),
+            Position = new Vector2(
+                (displayTile.X * TileSize) - (TileSize * 0.5f),
+                (displayTile.Y * TileSize) - (TileSize * 0.5f)),
+            Modulate = ResolveTileBrightnessColor(displayTile),
+            ZIndex = layerDef.RenderOrder
+        };
     }
 
     private void BuildChunkRaisedFeatures(ChunkRuntimeState chunk, ChunkVisualState visual)
@@ -364,10 +762,26 @@ public sealed partial class WorldRenderer : Node2D
             Enabled = true,
             PositionSmoothingEnabled = true,
             PositionSmoothingSpeed = 6f,
-            Zoom = new Vector2(1f, 1f)
+            Zoom = new Vector2(BaseCameraZoom, BaseCameraZoom)
         };
+        _camera = camera;
         _playerBody.AddChild(camera);
         AddChild(_playerBody);
+    }
+
+    private void UpdateCameraZoom(bool zoomOutHeld)
+    {
+        if (_camera is null)
+        {
+            return;
+        }
+
+        var targetZoomScalar = zoomOutHeld
+            ? BaseCameraZoom / TemporaryZoomOutFactor
+            : BaseCameraZoom;
+        var target = new Vector2(targetZoomScalar, targetZoomScalar);
+        var weight = 1f - MathF.Exp(-CameraZoomLerpSpeed * (float)GetPhysicsProcessDeltaTime());
+        _camera.Zoom = _camera.Zoom.Lerp(target, weight);
     }
 
     private void SynchronizeEntityStructure()
@@ -520,11 +934,24 @@ public sealed partial class WorldRenderer : Node2D
 
         return new EntityVisualState(
             texture,
-            ToGodot(entity.Position),
+            ResolveEntitySpritePosition(entity, runtime),
             entity.Kind == WorldEntityKind.Creature && entity.Position.X > runtime.Player.Position.X,
             ResolveEntityModulate(entity),
             ResolveZIndex(entity),
             entity.OpenState);
+    }
+
+    private Vector2 ResolveEntitySpritePosition(WorldEntityState entity, GameRuntime runtime)
+    {
+        if (entity.Kind == WorldEntityKind.ResourceNode)
+        {
+            var resourceDef = runtime.Content.ResourceNodes.Get(entity.DefinitionId);
+            var alignedX = entity.Position.X + ((TileSize - resourceDef.SpriteWidth) * 0.5f);
+            var alignedY = entity.Position.Y + TileSize - resourceDef.SpriteHeight;
+            return ToGodot(new NumericsVector2(alignedX, alignedY));
+        }
+
+        return ToGodot(entity.Position);
     }
 
     private static bool IsDynamicEntity(WorldEntityState entity)
@@ -537,6 +964,46 @@ public sealed partial class WorldRenderer : Node2D
         return ResolveCachedTexture(
             $"terrain:{terrainDef.Id.Value}:{atlasColumn}:{atlasRow}",
             () => _textureLoader.LoadTerrain(terrainDef, atlasColumn, atlasRow).Texture);
+    }
+
+    private Texture2D ResolveDualGridTerrainTexture(DualGridLayerDef layerDef, int variantIndex)
+    {
+        return ResolveCachedTexture(
+            $"dualgrid:{layerDef.TextureId}:{variantIndex}",
+            () =>
+            {
+                var texture = _textureLoader.LoadTexture(layerDef.TextureId, layerDef.TexturePath);
+                var (atlasColumn, atlasRow) = ResolveDualGridTerrainAtlasCoords(variantIndex);
+                return new AtlasTexture
+                {
+                    Atlas = texture.Texture,
+                    Region = new Rect2(atlasColumn * TileSize, atlasRow * TileSize, TileSize, TileSize)
+                };
+            });
+    }
+
+    private static (int AtlasColumn, int AtlasRow) ResolveDualGridTerrainAtlasCoords(int variantIndex)
+    {
+        return variantIndex switch
+        {
+            CoverDualGridResolver.Empty => (0, 3),
+            CoverDualGridResolver.OuterTopLeft => (3, 3),
+            CoverDualGridResolver.OuterTopRight => (0, 2),
+            CoverDualGridResolver.OuterBottomLeft => (0, 0),
+            CoverDualGridResolver.OuterBottomRight => (1, 3),
+            CoverDualGridResolver.EdgeTop => (1, 2),
+            CoverDualGridResolver.EdgeRight => (1, 0),
+            CoverDualGridResolver.EdgeBottom => (3, 0),
+            CoverDualGridResolver.EdgeLeft => (3, 2),
+            CoverDualGridResolver.InnerTopLeft => (3, 1),
+            CoverDualGridResolver.InnerTopRight => (2, 2),
+            CoverDualGridResolver.InnerBottomLeft => (2, 0),
+            CoverDualGridResolver.InnerBottomRight => (1, 1),
+            CoverDualGridResolver.DiagonalA => (0, 1),
+            CoverDualGridResolver.DiagonalB => (2, 3),
+            CoverDualGridResolver.Full => (2, 1),
+            _ => throw new ArgumentOutOfRangeException(nameof(variantIndex), $"Unsupported dual-grid variant '{variantIndex}'.")
+        };
     }
 
     private Texture2D ResolveItemTexture(ItemDef itemDef) => ResolveCachedTexture($"item:{itemDef.Id.Value}", () => _textureLoader.LoadItem(itemDef).Texture);
@@ -700,7 +1167,32 @@ public sealed partial class WorldRenderer : Node2D
     {
         foreach (var visual in _chunkVisuals.Values)
         {
-            foreach (var pair in visual.TerrainSprites)
+            foreach (var pair in visual.BaseTerrainSprites)
+            {
+                pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key, visual.BaseTerrainTints[pair.Key]);
+            }
+
+            foreach (var pair in visual.CoverTerrainSprites)
+            {
+                pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key);
+            }
+
+            foreach (var pair in visual.BaseDualGridSprites)
+            {
+                pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key);
+            }
+
+            foreach (var pair in visual.DeepWaterSprites)
+            {
+                pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key);
+            }
+
+            foreach (var pair in visual.BeachSprites)
+            {
+                pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key);
+            }
+
+            foreach (var pair in visual.GrassSprites)
             {
                 pair.Value.Modulate = ResolveTileBrightnessColor(pair.Key);
             }
@@ -712,9 +1204,9 @@ public sealed partial class WorldRenderer : Node2D
         }
     }
 
-    private Color ResolveTileBrightnessColor(WorldTileCoord tile)
+    private Color ResolveTileBrightnessColor(WorldTileCoord tile, Color? baseColor = null)
     {
-        return ApplyBrightness(Colors.White, SampleBrightness(tile));
+        return ApplyBrightness(baseColor ?? Colors.White, SampleBrightness(tile));
     }
 
     private float ResolveEntityBrightness(WorldEntityState entity)
@@ -738,8 +1230,7 @@ public sealed partial class WorldRenderer : Node2D
 
     private float ResolveResourceBrightness(WorldEntityState entity)
     {
-        var resourceDef = _runtime!.Content.ResourceNodes.Get(entity.DefinitionId);
-        var footWorld = new NumericsVector2(entity.Position.X + (resourceDef.SpriteWidth * 0.5f), entity.Position.Y + resourceDef.SpriteHeight - 4f);
+        var footWorld = new NumericsVector2(entity.Position.X + (TileSize * 0.5f), entity.Position.Y + TileSize - 4f);
         return ResolveBiasedBrightness(_worldFacade!.GetWorldTile(footWorld), 0.10f);
     }
 
@@ -853,8 +1344,7 @@ public sealed partial class WorldRenderer : Node2D
 
     private float ResolveResourceSortY(WorldEntityState entity)
     {
-        var resourceDef = _runtime!.Content.ResourceNodes.Get(entity.DefinitionId);
-        return entity.Position.Y + (resourceDef.IsTree ? resourceDef.SpriteHeight * 0.75f : resourceDef.SpriteHeight);
+        return entity.Position.Y + TileSize;
     }
 
     private float ResolvePlaceableSortY(WorldEntityState entity)
@@ -903,6 +1393,17 @@ public sealed partial class WorldRenderer : Node2D
         return movement.Y > 0 ? "down" : "up";
     }
 
+    private static int ToTileIndex(int x, int y, int width) => (y * width) + x;
+
+    private static int ToCornerIndex(int x, int y, int width) => (y * width) + x;
+
+    private static int GetChunkPriority(ChunkCoord coord, ChunkCoord center)
+    {
+        var dx = Math.Abs(coord.X - center.X);
+        var dy = Math.Abs(coord.Y - center.Y);
+        return Math.Max(dx, dy);
+    }
+
     private static Vector2 ToGodot(NumericsVector2 vector) => new(vector.X, vector.Y);
 
     private Node2D BuildChunkBounds(ChunkCoord coord)
@@ -929,19 +1430,126 @@ public sealed partial class WorldRenderer : Node2D
         return root;
     }
 
-    private sealed record ChunkVisualState(
-        Node2D TerrainRoot,
-        Node2D RaisedFeatureRoot,
-        Node2D EntityRoot,
-        Node2D BoundsRoot,
-        Dictionary<WorldTileCoord, Sprite2D> TerrainSprites,
-        Dictionary<WorldTileCoord, Sprite2D> RaisedSprites)
+    private sealed class ChunkVisualState
     {
         public ChunkVisualState(Node2D terrainRoot, Node2D raisedFeatureRoot, Node2D entityRoot, Node2D boundsRoot)
-            : this(terrainRoot, raisedFeatureRoot, entityRoot, boundsRoot, [], [])
         {
+            TerrainRoot = terrainRoot;
+            RaisedFeatureRoot = raisedFeatureRoot;
+            EntityRoot = entityRoot;
+            BoundsRoot = boundsRoot;
+        }
+
+        public Node2D TerrainRoot { get; }
+        public Node2D RaisedFeatureRoot { get; }
+        public Node2D EntityRoot { get; }
+        public Node2D BoundsRoot { get; }
+        public Dictionary<WorldTileCoord, Sprite2D> BaseTerrainSprites { get; } = [];
+        public Dictionary<WorldTileCoord, Color> BaseTerrainTints { get; } = [];
+        public Dictionary<WorldTileCoord, Sprite2D> CoverTerrainSprites { get; } = [];
+        public Dictionary<WorldTileCoord, Sprite2D> BaseDualGridSprites { get; } = [];
+        public Dictionary<WorldTileCoord, Sprite2D> DeepWaterSprites { get; } = [];
+        public Dictionary<WorldTileCoord, Sprite2D> BeachSprites { get; } = [];
+        public Dictionary<WorldTileCoord, Sprite2D> GrassSprites { get; } = [];
+        public Dictionary<WorldTileCoord, Sprite2D> RaisedSprites { get; } = [];
+        public long TerrainBuildRequestId { get; set; }
+        public bool IsTerrainReady { get; set; }
+    }
+
+    private sealed record PendingChunkTerrainBuild(
+        long RequestId,
+        Task<ChunkTerrainBuildResult> Task);
+
+    private sealed class PendingChunkTerrainAttach
+    {
+        public PendingChunkTerrainAttach(long requestId, ChunkTerrainBuildResult buildResult)
+        {
+            RequestId = requestId;
+            BuildResult = buildResult;
+        }
+
+        public long RequestId { get; }
+        public ChunkTerrainBuildResult BuildResult { get; }
+        public int BaseIndex { get; set; }
+        public int CoverIndex { get; set; }
+        public int BaseDualGridIndex { get; set; }
+        public int DeepWaterIndex { get; set; }
+        public int BeachIndex { get; set; }
+        public int GrassIndex { get; set; }
+
+        public bool IsCompleted =>
+            BaseIndex >= BuildResult.BaseTerrains.Length
+            && CoverIndex >= BuildResult.CoverTerrains.Length
+            && BaseDualGridIndex >= BuildResult.BaseDualGridTerrains.Length
+            && DeepWaterIndex >= BuildResult.DeepWaterTerrains.Length
+            && BeachIndex >= BuildResult.BeachTerrains.Length
+            && GrassIndex >= BuildResult.GrassTerrains.Length;
+
+        public void SetLayerIndex(DualGridTerrainSpriteDescriptor[] descriptors, int nextIndex)
+        {
+            if (ReferenceEquals(descriptors, BuildResult.BaseDualGridTerrains))
+            {
+                BaseDualGridIndex = nextIndex;
+                return;
+            }
+
+            if (ReferenceEquals(descriptors, BuildResult.DeepWaterTerrains))
+            {
+                DeepWaterIndex = nextIndex;
+                return;
+            }
+
+            if (ReferenceEquals(descriptors, BuildResult.BeachTerrains))
+            {
+                BeachIndex = nextIndex;
+                return;
+            }
+
+            if (ReferenceEquals(descriptors, BuildResult.GrassTerrains))
+            {
+                GrassIndex = nextIndex;
+                return;
+            }
+
+            throw new InvalidOperationException("Unknown dual-grid descriptor bucket.");
         }
     }
+
+    private sealed record ChunkTerrainBuildSnapshot(
+        WorldSpaceKind WorldSpaceKind,
+        ChunkCoord ChunkCoord,
+        WorldTileCoord ChunkOriginTile,
+        int Width,
+        int Height,
+        ContentId DefaultBaseTerrainId,
+        SurfaceTileSemantic[] Semantics,
+        ContentId?[] BaseTerrainIds,
+        ContentId?[] CoverTerrainIds,
+        TerrainVisualKind[] OverlayDualGridVisualWindow,
+        TerrainVisualKind?[] BaseDualGridVisualWindow);
+
+    private sealed record ChunkTerrainBuildResult(
+        ChunkCoord ChunkCoord,
+        BaseTerrainSpriteDescriptor[] BaseTerrains,
+        CoverTerrainSpriteDescriptor[] CoverTerrains,
+        DualGridTerrainSpriteDescriptor[] BaseDualGridTerrains,
+        DualGridTerrainSpriteDescriptor[] DeepWaterTerrains,
+        DualGridTerrainSpriteDescriptor[] BeachTerrains,
+        DualGridTerrainSpriteDescriptor[] GrassTerrains);
+
+    private sealed record BaseTerrainSpriteDescriptor(
+        WorldTileCoord Tile,
+        ContentId TerrainId,
+        Color BaseTint);
+
+    private sealed record CoverTerrainSpriteDescriptor(
+        WorldTileCoord Tile,
+        ContentId TerrainId);
+
+    private sealed record DualGridTerrainSpriteDescriptor(
+        WorldTileCoord Tile,
+        TerrainVisualKind VisualKind,
+        int VariantIndex);
 
     private readonly record struct EntityVisualState(
         Texture2D? Texture,

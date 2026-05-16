@@ -3,36 +3,13 @@ using Downroot.Core.World;
 
 namespace Downroot.World.Generation.Passes;
 
-public sealed class PortalSitePass(ContentId portalId, float spawnChance, ChunkCoord? requiredChunk = null, int minChunkSpacing = 0) : IWorldGenPass
+public sealed class PortalSitePass(ContentId portalId, IReadOnlyList<PortalWorldLinkDef> links) : IWorldGenPass
 {
     public string Name => WorldGenPassTypes.PortalSite;
 
     public void Execute(IWorldGenContext context)
     {
-        // If a specific chunk is required, skip all others.
-        if (requiredChunk is { } required && context.ChunkCoord != required)
-        {
-            return;
-        }
-
-        if (spawnChance <= 0f)
-        {
-            return;
-        }
-
-        // Deterministic probability check — same seed + chunk always yields the same result.
-        var rootTile = context.GetWorldTileCoord(new LocalTileCoord(0, 0));
-        var salt = portalId.Value.GetHashCode();
-        var myValue = context.GetStableUnitValue(rootTile, salt);
-        if (myValue >= spawnChance)
-        {
-            return;
-        }
-
-        // Minimum spacing check — Poisson-like: only the chunk with the best (lowest)
-        // random value in its neighborhood spawns a portal. This guarantees no two
-        // portals are within minChunkSpacing chunks of each other.
-        if (minChunkSpacing > 0 && HasStrongerNeighbor(context, salt, myValue))
+        if (!HasPortalInChunk(context))
         {
             return;
         }
@@ -47,38 +24,21 @@ public sealed class PortalSitePass(ContentId portalId, float spawnChance, ChunkC
         context.AddSpawn(best.Value, portalId);
     }
 
-    /// <summary>
-    /// Checks whether any neighboring chunk within minChunkSpacing chunks
-    /// has a lower random value, meaning it has a stronger claim to the portal in this region.
-    /// </summary>
-    private bool HasStrongerNeighbor(IWorldGenContext context, int salt, float myValue)
+    private bool HasPortalInChunk(IWorldGenContext context)
     {
-        var cx = context.ChunkCoord.X;
-        var cy = context.ChunkCoord.Y;
-        var radius = minChunkSpacing;
-
-        for (var dy = -radius; dy <= radius; dy++)
+        if (links.Any(link =>
+            (link.SourceWorldSpaceKind == context.WorldSpaceKind && link.SourcePortalChunk == context.ChunkCoord)
+            || (link.TargetWorldSpaceKind == context.WorldSpaceKind && link.TargetPortalChunk == context.ChunkCoord)))
         {
-            for (var dx = -radius; dx <= radius; dx++)
-            {
-                if (dx == 0 && dy == 0)
-                {
-                    continue;
-                }
-
-                var neighborCoord = new ChunkCoord(cx + dx, cy + dy);
-                var neighborTile = WorldTileCoord.FromChunkAndLocal(
-                    neighborCoord, new LocalTileCoord(0, 0), context.Width, context.Height);
-
-                var neighborValue = context.GetStableUnitValue(neighborTile, salt);
-                if (neighborValue < myValue)
-                {
-                    return true;
-                }
-            }
+            return true;
         }
 
-        return false;
+        return PortalPlacementRules.IsGeneratedPortalChunk(
+            context.WorldSpaceKind,
+            context.WorldSeed,
+            context.Width,
+            context.Height,
+            context.ChunkCoord);
     }
 
     private static LocalTileCoord? FindNearestUsableTile(IWorldGenContext context, LocalTileCoord origin)
@@ -90,7 +50,13 @@ public sealed class PortalSitePass(ContentId portalId, float spawnChance, ChunkC
             for (var x = 0; x < context.Width; x++)
             {
                 var local = new LocalTileCoord(x, y);
-                if (context.IsSpawnOccupied(local) || context.HasSurfaceRegion(local, SurfaceRegions.River))
+                if (context.IsSpawnOccupied(local) || context.HasRaisedFeature(local) || context.HasSurfaceRegion(local, SurfaceRegions.River))
+                {
+                    continue;
+                }
+
+                var semantic = context.GetSurfaceSemantic(local);
+                if (!semantic.Buildable || semantic.Surface != SurfaceGameplayKind.Ground || semantic.Visual == TerrainVisualKind.Mountain)
                 {
                     continue;
                 }

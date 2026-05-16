@@ -37,6 +37,7 @@ public sealed class GameSaveLoader
         runtime.WorldState.ActiveStorageEntityId = null;
         runtime.WorldState.CurrentInteraction = null;
         runtime.WorldState.ActiveDestroyProgress = null;
+        var savedActiveWorldSpaceKind = Enum.Parse<WorldSpaceKind>(save.ActiveWorldSpaceKind, ignoreCase: true);
 
         foreach (var savedWorld in save.Worlds)
         {
@@ -65,7 +66,7 @@ public sealed class GameSaveLoader
                 runtime.WorldState.PocketWorlds[worldId] = pocketWorld;
 
                 // Set the active pocket world ID if the saved state was in a pocket world.
-                if (worldSpaceKind == runtime.ActiveWorldSpaceKind)
+                if (worldSpaceKind == savedActiveWorldSpaceKind)
                 {
                     runtime.WorldState.ActivePocketWorldId = worldId;
                 }
@@ -76,9 +77,9 @@ public sealed class GameSaveLoader
             }
         }
 
-        runtime.ActiveWorldSpaceKind = Enum.Parse<WorldSpaceKind>(save.ActiveWorldSpaceKind, ignoreCase: true);
+        runtime.ActiveWorldSpaceKind = savedActiveWorldSpaceKind;
         var streamer = new WorldStreamingSystem(runtime, worldFacade);
-        streamer.UpdateLoadedChunks();
+        streamer.UpdateLoadedChunksForWorld(runtime.GetWorld(runtime.ActiveWorldSpaceKind), runtime.GetWorldTile(runtime.Player.Position));
         worldFacade.ClearPrimaryBedAssignments();
         if (runtime.PrimaryBedEntityId is { } primaryBedId)
         {

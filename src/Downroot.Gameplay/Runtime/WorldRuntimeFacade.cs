@@ -1,5 +1,6 @@
 using System.Numerics;
 using Downroot.Core.Definitions;
+using Downroot.Core.Diagnostics;
 using Downroot.Core.Gameplay;
 using Downroot.Core.Ids;
 using Downroot.Core.World;
@@ -9,6 +10,8 @@ namespace Downroot.Gameplay.Runtime;
 
 public sealed class WorldRuntimeFacade(GameRuntime runtime)
 {
+    private readonly Dictionary<SurfaceSemanticCacheKey, SurfaceTileSemantic> _inferredSurfaceSemanticCache = [];
+
     private IEnumerable<LoadedWorldState> Worlds
     {
         get
@@ -36,7 +39,6 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
             return runtime.Overworld;
         }
 
-        // DimShardPocket: resolve via the active pocket world ID.
         var activeId = runtime.WorldState.ActivePocketWorldId;
         if (activeId is not null
             && runtime.WorldState.PocketWorlds.TryGetValue(activeId, out var pocketWorld))
@@ -49,7 +51,18 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
 
     public WorldGenerator GetGenerator(WorldSpaceKind worldSpaceKind)
     {
-        return runtime.GetWorldGenerator(worldSpaceKind);
+        if (worldSpaceKind == WorldSpaceKind.Overworld)
+        {
+            return runtime.OverworldGenerator;
+        }
+
+        var activeId = runtime.WorldState.ActivePocketWorldId;
+        if (activeId is not null)
+        {
+            return runtime.GetPocketGenerator(activeId);
+        }
+
+        throw new InvalidOperationException($"No active pocket world generator available for kind '{worldSpaceKind}'.");
     }
 
     public WorldGenerator GetGenerator(LoadedWorldState world)
@@ -76,6 +89,33 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
     public bool TryGetChunkForTile(WorldSpaceKind worldSpaceKind, WorldTileCoord tile, out ChunkRuntimeState chunk, out LocalTileCoord localCoord)
     {
         return GetWorld(worldSpaceKind).TryGetChunkForTile(tile, runtime.ChunkWidth, runtime.ChunkHeight, out chunk, out localCoord);
+    }
+
+    public SurfaceTileSemantic SampleSurfaceSemantic(WorldSpaceKind worldSpaceKind, WorldTileCoord tile)
+    {
+        RuntimeProfiler.Increment("SurfaceSemantic.Sample");
+        if (TryGetChunkForTile(worldSpaceKind, tile, out var chunk, out var localCoord))
+        {
+            RuntimeProfiler.Increment("SurfaceSemantic.LoadedHit");
+            return chunk.GeneratedChunk.Surface.GetSurfaceSemantic(localCoord.X, localCoord.Y);
+        }
+
+        var world = GetWorld(worldSpaceKind);
+        var key = new SurfaceSemanticCacheKey(world.WorldSpaceKind, world.WorldSeed, tile);
+        if (_inferredSurfaceSemanticCache.TryGetValue(key, out var semantic))
+        {
+            RuntimeProfiler.Increment("SurfaceSemantic.CacheHit");
+            return semantic;
+        }
+
+        RuntimeProfiler.Increment("SurfaceSemantic.CacheMiss");
+        using (RuntimeProfiler.Measure("SurfaceSemantic.InferMiss"))
+        {
+            semantic = TerrainSemanticWorldSampler.SampleSemantic(world.WorldSpaceKind, world.WorldSeed, tile);
+        }
+
+        _inferredSurfaceSemanticCache[key] = semantic;
+        return semantic;
     }
 
     public ContentId? GetRaisedFeatureId(WorldSpaceKind worldSpaceKind, WorldTileCoord tile)
@@ -167,29 +207,16 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
 
     public PortalWorldLinkDef GetPortalLink(WorldSpaceKind worldSpaceKind, ChunkCoord portalChunk)
     {
-        if (worldSpaceKind == WorldSpaceKind.Overworld)
+        var staticLink = runtime.Content.PortalWorldLinks.FirstOrDefault(link =>
+            (link.SourceWorldSpaceKind == worldSpaceKind && link.SourcePortalChunk == portalChunk)
+            || (link.TargetWorldSpaceKind == worldSpaceKind && link.TargetPortalChunk == portalChunk));
+        if (staticLink is not null)
         {
-            return new PortalWorldLinkDef(
-                WorldSpaceKind.Overworld,
-                WorldSpaceKind.DimShardPocket,
-                portalChunk,
-                new ChunkCoord(0, 0),
-                $"link:overworld-{portalChunk.X},{portalChunk.Y}");
+            return staticLink;
         }
 
-        // DimShardPocket portal — return to overworld at the source portal chunk.
-        // The source portal chunk is stored on the pocket world's model.
-        var pocketWorld = runtime.WorldState.PocketWorlds.Values
-            .FirstOrDefault(w => w.Model.SourcePortalChunk is not null
-                && w.LoadedChunks.ContainsKey(portalChunk));
-        var returnChunk = pocketWorld?.Model.SourcePortalChunk ?? new ChunkCoord(0, 0);
-
-        return new PortalWorldLinkDef(
-            WorldSpaceKind.DimShardPocket,
-            WorldSpaceKind.Overworld,
-            portalChunk,
-            returnChunk,
-            $"link:dimshard-{portalChunk.X},{portalChunk.Y}");
+        var world = runtime.GetWorld(worldSpaceKind);
+        return PortalPlacementRules.CreateGeneratedLink(worldSpaceKind, world.WorldSeed, runtime.ChunkWidth, runtime.ChunkHeight, portalChunk);
     }
 
     public bool IsPortalEntity(WorldEntityState entity)
@@ -201,7 +228,16 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
 
         var portalDefId = GetPortalDefinitionId(entity.WorldSpaceKind);
         return portalDefId is not null
-            && entity.DefinitionId == portalDefId.Value;
+            && entity.DefinitionId == portalDefId.Value
+            && (runtime.Content.PortalWorldLinks.Any(link =>
+                (link.SourceWorldSpaceKind == entity.WorldSpaceKind && link.SourcePortalChunk == entity.ChunkCoord)
+                || (link.TargetWorldSpaceKind == entity.WorldSpaceKind && link.TargetPortalChunk == entity.ChunkCoord))
+                || PortalPlacementRules.IsGeneratedPortalChunk(
+                    entity.WorldSpaceKind,
+                    runtime.GetWorld(entity.WorldSpaceKind).WorldSeed,
+                    runtime.ChunkWidth,
+                    runtime.ChunkHeight,
+                    entity.ChunkCoord));
     }
 
     public bool TryGetPlaceableDef(WorldEntityState entity, out PlaceableDef placeableDef)
@@ -285,4 +321,9 @@ public sealed class WorldRuntimeFacade(GameRuntime runtime)
 
         return false;
     }
+
+    private readonly record struct SurfaceSemanticCacheKey(
+        WorldSpaceKind WorldSpaceKind,
+        int WorldSeed,
+        WorldTileCoord Tile);
 }

@@ -1,18 +1,23 @@
+using System.Numerics;
 using Downroot.Core.Definitions;
 using Downroot.Core.Diagnostics;
 using Downroot.Core.Gameplay;
 using Downroot.Core.Ids;
 using Downroot.Core.Input;
+using Downroot.Core.World;
 using Downroot.Gameplay.Runtime.Systems;
 
 namespace Downroot.Gameplay.Runtime;
 
 public sealed class GameSimulation
 {
+    private const float HungerDrainIntervalSeconds = 36f;
+
     private const float AttackRange = 28f;
     private const int EmptyHandDamage = 1;
     private const float ThrowableHitRadius = 20f;
     private const float ThrowableTraceStep = 8f;
+    private const int RespawnSearchRadius = 12;
 
     private readonly GameRuntime _runtime;
     private readonly WorldRuntimeFacade _worldFacade;
@@ -302,7 +307,7 @@ public sealed class GameSimulation
             _runtime.WorldState.TimeOfDaySeconds -= _runtime.BootstrapConfig.DayLengthSeconds;
         }
 
-        if (_runtime.WorldState.TotalElapsedSeconds % 3f < deltaSeconds)
+        if (_runtime.WorldState.TotalElapsedSeconds % HungerDrainIntervalSeconds < deltaSeconds)
         {
             var hungerDrain = 1;
 
@@ -582,5 +587,85 @@ public sealed class GameSimulation
 
         _runtime.Player.Survival.Damage(amount);
         _runtime.WorldState.PlayerHitFlashSeconds = 0.18f;
+        if (_runtime.Player.Survival.Health <= 0)
+        {
+            RespawnPlayerAtSpawnPoint();
+        }
+    }
+
+    private void RespawnPlayerAtSpawnPoint()
+    {
+        var spawnTile = _runtime.BootstrapConfig.PlayerSpawn.Tile;
+        var overworld = _runtime.Overworld;
+
+        _runtime.WorldState.Travel.Reset();
+        _runtime.WorldState.WorkspaceMode = CraftWorkspaceMode.Hidden;
+        _runtime.WorldState.ActiveStationEntityId = null;
+        _runtime.WorldState.ActiveStationKind = null;
+        _runtime.WorldState.ActiveStorageEntityId = null;
+        _runtime.WorldState.CurrentInteraction = null;
+        _runtime.WorldState.ActiveDestroyProgress = null;
+        _runtime.WorldState.ActiveFurnaceTask = null;
+        _runtime.ActiveWorldSpaceKind = WorldSpaceKind.Overworld;
+
+        _worldStreamingSystem.UpdateLoadedChunksForWorld(overworld, spawnTile);
+
+        var respawnTile = FindRespawnTile(spawnTile);
+        _runtime.Player.Position = _worldFacade.GetWorldPosition(respawnTile);
+        _runtime.Player.Facing = Vector2.UnitY;
+        _runtime.Player.Survival.SetHealth(_runtime.BootstrapConfig.StartingHealth);
+        _runtime.Player.Survival.SetHunger(_runtime.BootstrapConfig.StartingHunger);
+        _runtime.WorldState.PlayerHitFlashSeconds = 0f;
+        _runtime.WorldState.SetStatusEvent(new StatusEventState(StatusEventKind.Respawned), 1.5f);
+        _worldFacade.MarkEntityProjectionDirty();
+        _worldFacade.EnsureEntityProjectionCurrent();
+    }
+
+    private WorldTileCoord FindRespawnTile(WorldTileCoord originTile)
+    {
+        foreach (var candidate in EnumerateRespawnCandidates(originTile, RespawnSearchRadius))
+        {
+            if (!IsRespawnCandidateWalkable(candidate))
+            {
+                continue;
+            }
+
+            return candidate;
+        }
+
+        return originTile;
+    }
+
+    private IEnumerable<WorldTileCoord> EnumerateRespawnCandidates(WorldTileCoord originTile, int maxRadius)
+    {
+        yield return originTile;
+
+        for (var radius = 1; radius <= maxRadius; radius++)
+        {
+            for (var dy = -radius; dy <= radius; dy++)
+            {
+                for (var dx = -radius; dx <= radius; dx++)
+                {
+                    if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != radius)
+                    {
+                        continue;
+                    }
+
+                    yield return new WorldTileCoord(originTile.X + dx, originTile.Y + dy);
+                }
+            }
+        }
+    }
+
+    private bool IsRespawnCandidateWalkable(WorldTileCoord tile)
+    {
+        var chunkCoord = tile.ToChunkCoord(_runtime.ChunkWidth, _runtime.ChunkHeight);
+        if (!_runtime.Overworld.ContainsChunk(chunkCoord))
+        {
+            return false;
+        }
+
+        var position = _worldFacade.GetWorldPosition(tile);
+        return !_movementSystem.IsBlocked(position);
     }
 }

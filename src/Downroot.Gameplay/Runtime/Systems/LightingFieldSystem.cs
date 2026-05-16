@@ -108,23 +108,34 @@ public sealed class LightingFieldSystem(GameRuntime runtime, WorldRuntimeFacade 
             return DayOutdoorBrightness;
         }
 
-        var progress = ((timeOfDaySeconds % dayLengthSeconds) + dayLengthSeconds) % dayLengthSeconds / dayLengthSeconds;
-        if (progress < 0.40f)
+        var clockHours = TimeOfDayRules.ResolveClockHours(timeOfDaySeconds, dayLengthSeconds);
+        if (clockHours >= TimeOfDayRules.DayStartHour && clockHours < TimeOfDayRules.DuskStartHour)
         {
             return DayOutdoorBrightness;
         }
 
-        if (progress < 0.50f)
+        if (clockHours >= TimeOfDayRules.DawnStartHour && clockHours < TimeOfDayRules.DayStartHour)
         {
-            return Lerp(DayOutdoorBrightness, NightOutdoorBrightness, (progress - 0.40f) / 0.10f);
+            return Lerp(
+                NightOutdoorBrightness,
+                DayOutdoorBrightness,
+                SmoothStep01((clockHours - TimeOfDayRules.DawnStartHour) / (TimeOfDayRules.DayStartHour - TimeOfDayRules.DawnStartHour)));
         }
 
-        if (progress < 0.90f)
+        if (clockHours >= TimeOfDayRules.DuskStartHour && clockHours < TimeOfDayRules.NightStartHour)
+        {
+            return Lerp(
+                DayOutdoorBrightness,
+                NightOutdoorBrightness,
+                SmoothStep01((clockHours - TimeOfDayRules.DuskStartHour) / (TimeOfDayRules.NightStartHour - TimeOfDayRules.DuskStartHour)));
+        }
+
+        if (clockHours < TimeOfDayRules.DawnStartHour)
         {
             return NightOutdoorBrightness;
         }
 
-        return Lerp(NightOutdoorBrightness, DayOutdoorBrightness, (progress - 0.90f) / 0.10f);
+        return NightOutdoorBrightness;
     }
 
     private static int QuantizeSkylight(float outdoorLevel)
@@ -151,6 +162,12 @@ public sealed class LightingFieldSystem(GameRuntime runtime, WorldRuntimeFacade 
     private static float Lerp(float from, float to, float t)
     {
         return from + ((to - from) * Math.Clamp(t, 0f, 1f));
+    }
+
+    private static float SmoothStep01(float t)
+    {
+        var clamped = Math.Clamp(t, 0f, 1f);
+        return clamped * clamped * (3f - (2f * clamped));
     }
 
     private static void WriteEmitterLight(

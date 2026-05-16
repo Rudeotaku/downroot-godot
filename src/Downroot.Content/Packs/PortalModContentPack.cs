@@ -29,7 +29,6 @@ public sealed class PortalModContentPack : IContentPack
         var frostcoreItemId = new ContentId("portalmod:frostcore_item");
         var frostcoreRaisedId = new ContentId("portalmod:frostcore_raised");
         var iceCrystalItemId = new ContentId("basegame:ice_crystal");
-
         registrar.RegisterTerrain(new TerrainDef(dimfragId, "Dimfrag", PackId, "packs/portalmod/assets/world/terrain/ground/dimfrag.png", 32, 32, 0, 0));
         registrar.RegisterPlaceable(new PlaceableDef(
             portalPlaceableId,
@@ -59,10 +58,10 @@ public sealed class PortalModContentPack : IContentPack
         registrar.RegisterRaisedOreFieldRule(new RaisedOreFieldRuleDef(frostcoreRaisedId, WorldSpaceKind.DimShardPocket, SurfaceRegions.DimShardField, 0.24f, false, [frostcoreRaisedId]));
         registrar.RegisterRecipe(new RecipeDef(new ContentId("portalmod:smelt_frostcore"), "Ice Crystal", PackId, [new ItemAmount(frostcoreItemId, 1)], new ItemAmount(iceCrystalItemId, 2), CraftingStationKind.Furnace, CraftDurationSeconds: 3.5f));
 
-        registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("portalmod:portal-site"), WorldGenPassTypes.PortalSite, portalPlaceableId, WorldSpaceKind.Overworld, SpawnChance: 0.20f, MinChunkSpacing: 3));
+        registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("portalmod:portal-site"), WorldGenPassTypes.PortalSite, portalPlaceableId, WorldSpaceKind.Overworld));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("portalmod:dim-fill"), WorldGenPassTypes.FillTerrain, dimfragId, WorldSpaceKind.DimShardPocket, PrimarySurfaceRegion: SurfaceRegions.DimShardField));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("portalmod:frostcore_raised"), WorldGenPassTypes.RaisedOreField, frostcoreRaisedId, WorldSpaceKind.DimShardPocket));
         registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("portalmod:dim-rock-outcrop"), WorldGenPassTypes.RockOutcrop, new ContentId("basegame:rock_outcrop"), WorldSpaceKind.DimShardPocket));
-        registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("portalmod:dim-portal-site"), WorldGenPassTypes.PortalSite, portalPlaceableId, WorldSpaceKind.DimShardPocket, SpawnChance: 1.0f, RequiredChunkCoord: new ChunkCoord(0, 0)));
+        registrar.RegisterWorldGenPass(new WorldGenPassDef(new ContentId("portalmod:dim-portal-site"), WorldGenPassTypes.PortalSite, portalPlaceableId, WorldSpaceKind.DimShardPocket));
     }
 }
