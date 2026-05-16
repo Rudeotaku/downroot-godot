@@ -14,6 +14,13 @@ public sealed record WorldGenPassDef(
     int Height = 0,
     string? PrimarySurfaceRegion = null,
     int MinSpacing = 0,
-    float SpawnChance = 0f,
-    ChunkCoord? RequiredChunkCoord = null,
-    int MinChunkSpacing = 0);
+    bool RequireBuildable = false,
+    bool RequireSupportsTrees = false,
+    TerrainRegionKind? RequiredTerrainRegion = null,
+    bool PreferForestCore = false,
+    bool PreferForestEdge = false,
+    bool AvoidRiverBank = false,
+    float CandidateDensity = 1f,
+    int? MaxCountOverride = null,
+    TreeBiomeKind? TreeBiome = null,
+    IReadOnlyList<ContentId>? SpeciesPoolIds = null);

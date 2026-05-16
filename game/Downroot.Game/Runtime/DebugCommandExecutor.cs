@@ -50,8 +50,8 @@ public sealed class DebugCommandExecutor
                 }
 
                 _runtime.WorldState.TimeOfDaySeconds = string.Equals(parts[1], "night", StringComparison.OrdinalIgnoreCase)
-                    ? _runtime.BootstrapConfig.DayLengthSeconds * 0.75f
-                    : _runtime.BootstrapConfig.DayLengthSeconds * 0.25f;
+                    ? _runtime.BootstrapConfig.DayLengthSeconds * TimeOfDayRules.ResolveNormalizedTimeForHour(23f)
+                    : _runtime.BootstrapConfig.DayLengthSeconds * TimeOfDayRules.ResolveNormalizedTimeForHour(12f);
                 return $"Time set to {parts[1]}";
             case "teleport_portal":
                 return TeleportPortal();
@@ -69,17 +69,12 @@ public sealed class DebugCommandExecutor
     private string TeleportPortal()
     {
         var world = _runtime.GetWorld(_runtime.ActiveWorldSpaceKind);
-        var portalLink = _runtime.Content.PortalWorldLinks.FirstOrDefault(link =>
-            link.SourceWorldSpaceKind == _runtime.ActiveWorldSpaceKind
-            || link.TargetWorldSpaceKind == _runtime.ActiveWorldSpaceKind);
-        if (portalLink is null)
-        {
-            return "No portal link available";
-        }
-
-        var chunk = portalLink.SourceWorldSpaceKind == _runtime.ActiveWorldSpaceKind
-            ? portalLink.SourcePortalChunk
-            : portalLink.TargetPortalChunk;
+        var chunk = PortalPlacementRules.ResolveNearestPortalChunk(
+            _runtime.ActiveWorldSpaceKind,
+            world.WorldSeed,
+            _runtime.ChunkWidth,
+            _runtime.ChunkHeight,
+            _runtime.GetChunkCoord(_runtime.Player.Position));
         var tile = WorldTileCoord.FromChunkAndLocal(chunk, new LocalTileCoord(0, 0), _runtime.ChunkWidth, _runtime.ChunkHeight);
         _runtime.Player.Position = _runtime.GetWorldPosition(tile);
         new WorldStreamingSystem(_runtime, new WorldRuntimeFacade(_runtime)).UpdateLoadedChunksForWorld(world, tile);

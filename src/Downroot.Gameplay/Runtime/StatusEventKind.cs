@@ -11,6 +11,7 @@ public enum StatusEventKind
     CraftFailed,
     EnteredPortal,
     ReturnedThroughPortal,
+    Respawned,
     HomeSet,
     SleptUntilMorning,
     LightLit,

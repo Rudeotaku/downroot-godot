@@ -56,7 +56,10 @@ public partial class GameRoot : Node2D
 
             _startupOverlay.UpdateStatus("Bootstrapping runtime");
             RuntimeProfiler.Enabled = EnableRuntimeProfiler;
-            RuntimeProfiler.Configure(message => GD.Print(message), frameWindow: 60);
+            var savePathResolver = new SavePathResolver();
+            RuntimeProfiler.Configure(
+                savePathResolver.Globalize(savePathResolver.GetRuntimeProfilerLogPath()),
+                TimeSpan.FromSeconds(5));
             if (_runtime is null)
             {
                 throw new InvalidOperationException("GameRoot requires a preconfigured runtime.");
@@ -93,7 +96,7 @@ public partial class GameRoot : Node2D
             _startupOverlay.UpdateStatus("Validating content");
             _worldRenderer.ValidateContentLoads(_runtime);
 
-            _worldRenderer.Update(new InputFrame(default, default, false, false, false, false, false, false, 0, null));
+            _worldRenderer.Update(new InputFrame(default, default, false, false, false, false, false, false, false, 0, null));
             _hudController.Refresh(_runtime, _worldRenderer.WorldToScreen);
             _startupOverlay.Hide();
             _initialized = true;
@@ -156,6 +159,11 @@ public partial class GameRoot : Node2D
         _debugPanel?.Refresh();
 
         RuntimeProfiler.EndFrame();
+    }
+
+    public override void _ExitTree()
+    {
+        RuntimeProfiler.FlushNow();
     }
 
     private void InitializeTravelOverlay()

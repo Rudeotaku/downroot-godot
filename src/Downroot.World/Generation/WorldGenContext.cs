@@ -1,4 +1,5 @@
 using Downroot.Content.Registries;
+using Downroot.Core.Diagnostics;
 using Downroot.Core.Ids;
 using Downroot.Core.World;
 using Downroot.World.Models;
@@ -11,12 +12,14 @@ public sealed class WorldGenContext(
     ChunkCoord chunkCoord,
     ChunkData surface,
     ContentRegistrySet registries,
-    IList<WorldSpawnDef> spawns) : IWorldGenContext
+    IList<WorldSpawnDef> spawns,
+    IDiagnosticLogger logger) : IWorldGenContext
 {
     private readonly WorldSpaceKind _worldSpaceKind = worldSpaceKind;
     private readonly int _worldSeed = worldSeed;
     private readonly ChunkCoord _chunkCoord = chunkCoord;
 
+    public IDiagnosticLogger Logger { get; } = logger;
     public WorldSpaceKind WorldSpaceKind => _worldSpaceKind;
     public int WorldSeed => _worldSeed;
     public ChunkCoord ChunkCoord => _chunkCoord;
@@ -56,7 +59,7 @@ public sealed class WorldGenContext(
 
     public ContentId? GetBaseTerrain(LocalTileCoord coord) => surface.GetBaseTerrainId(coord.X, coord.Y);
 
-    public ContentId? GetTerrain(LocalTileCoord coord) => surface.GetTerrainId(coord.X, coord.Y);
+    public ContentId? GetCoverTerrain(LocalTileCoord coord) => surface.GetCoverTerrainId(coord.X, coord.Y);
 
     public ContentId? GetRaisedFeature(LocalTileCoord coord) => surface.GetRaisedFeatureId(coord.X, coord.Y);
 
@@ -72,11 +75,22 @@ public sealed class WorldGenContext(
 
     public void SetRaisedFeatureVariantIndex(LocalTileCoord coord, byte index) => surface.SetRaisedFeatureVariantIndex(coord.X, coord.Y, index);
 
+    public SurfaceTileSemantic GetSurfaceSemantic(LocalTileCoord coord) => surface.GetSurfaceSemantic(coord.X, coord.Y);
+
+    public void SetSurfaceSemantic(LocalTileCoord coord, SurfaceTileSemantic semantic) => surface.SetSurfaceSemantic(coord.X, coord.Y, semantic);
+
     public string GetSurfaceRegion(LocalTileCoord coord) => surface.GetSurfaceRegion(coord.X, coord.Y);
 
     public bool HasSurfaceRegion(LocalTileCoord coord, string regionKey) => surface.HasSurfaceRegion(coord.X, coord.Y, regionKey);
 
     public void SetSurfaceRegion(LocalTileCoord coord, string regionKey) => surface.SetSurfaceRegion(coord.X, coord.Y, regionKey);
+
+    public TerrainRegionKind SampleTerrainRegion(LocalTileCoord coord)
+    {
+        var worldTile = GetWorldTileCoord(coord);
+        var fields = TerrainMacroFieldSampler.Sample(_worldSpaceKind, _worldSeed, worldTile);
+        return TerrainRegionClassifier.Sample(_worldSpaceKind, _worldSeed, worldTile, fields).Region;
+    }
 
     public bool IsSpawnOccupied(LocalTileCoord coord)
     {
@@ -84,13 +98,13 @@ public sealed class WorldGenContext(
         return spawns.Any(spawn => spawn.Tile == worldTile);
     }
 
-    public void AddSpawn(LocalTileCoord coord, ContentId contentId)
+    public void AddSpawn(LocalTileCoord coord, ContentId contentId, int pixelOffsetX = 0, int pixelOffsetY = 0)
     {
         if (IsSpawnOccupied(coord))
         {
             return;
         }
 
-        spawns.Add(new WorldSpawnDef(contentId, GetWorldTileCoord(coord)));
+        spawns.Add(new WorldSpawnDef(contentId, GetWorldTileCoord(coord), pixelOffsetX, pixelOffsetY));
     }
 }

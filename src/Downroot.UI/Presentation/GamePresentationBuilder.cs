@@ -3,6 +3,7 @@ using Downroot.Core.Definitions;
 using Downroot.Core.Gameplay;
 using Downroot.Core.Ids;
 using Downroot.Gameplay.Runtime;
+using Downroot.Gameplay.Runtime.Systems;
 
 namespace Downroot.UI.Presentation;
 
@@ -23,13 +24,11 @@ public sealed class GamePresentationBuilder
     {
         var dayLength = runtime.BootstrapConfig.DayLengthSeconds;
         var isNight = runtime.WorldState.IsNight(dayLength);
-        var timeProgress = dayLength <= 0f
-            ? 0f
-            : runtime.WorldState.TimeOfDaySeconds / dayLength;
+        var timeProgress = TimeOfDayRules.NormalizeProgress(runtime.WorldState.TimeOfDaySeconds, dayLength);
         return new HudStatusViewData(
             FormatTimeOfDayLabel(timeProgress, runtime.WorldState.TotalElapsedSeconds, dayLength),
             isNight,
-            ResolveNightOverlayAlpha(timeProgress),
+            ResolveNightOverlayAlpha(runtime.WorldState.TimeOfDaySeconds, dayLength),
             ToPercent(runtime.Player.Survival.Health, runtime.Player.Survival.MaxHealth),
             ToPercent(runtime.Player.Survival.Hunger, runtime.Player.Survival.MaxHunger),
             Math.Clamp(runtime.WorldState.PlayerHitFlashSeconds / 0.18f, 0f, 1f) * 0.62f);
@@ -176,6 +175,7 @@ public sealed class GamePresentationBuilder
             { Kind: StatusEventKind.InventoryFull } => new StatusBannerViewData(true, "Inventory full"),
             { Kind: StatusEventKind.EnteredPortal } => new StatusBannerViewData(true, "Entering Portal"),
             { Kind: StatusEventKind.ReturnedThroughPortal } => new StatusBannerViewData(true, "Returned to Overworld"),
+            { Kind: StatusEventKind.Respawned } => new StatusBannerViewData(true, "Respawned at spawn point"),
             { Kind: StatusEventKind.HomeSet } => new StatusBannerViewData(true, "Home bed updated"),
             { Kind: StatusEventKind.SleptUntilMorning } => new StatusBannerViewData(true, "Slept until morning"),
             { Kind: StatusEventKind.LightLit } => new StatusBannerViewData(true, "Light source lit"),
@@ -259,7 +259,7 @@ public sealed class GamePresentationBuilder
         var dayNumber = dayLengthSeconds <= 0f
             ? 1
             : (int)MathF.Floor(totalElapsedSeconds / dayLengthSeconds) + 1;
-        var clockHours = (timeProgress * 24f + 6f) % 24f;
+        var clockHours = TimeOfDayRules.ResolveClockHours(timeProgress);
         var hour = (int)MathF.Floor(clockHours);
         var minute = (int)MathF.Floor((clockHours - hour) * 60f);
         var phase = ResolveTimePhase(clockHours);
@@ -273,12 +273,12 @@ public sealed class GamePresentationBuilder
             return "Dawn";
         }
 
-        if (clockHours is >= 7f and < 17f)
+        if (clockHours is >= 7f and < 19f)
         {
             return "Day";
         }
 
-        if (clockHours is >= 17f and < 19f)
+        if (clockHours is >= 19f and < 21f)
         {
             return "Dusk";
         }
@@ -286,10 +286,16 @@ public sealed class GamePresentationBuilder
         return "Night";
     }
 
-    private static float ResolveNightOverlayAlpha(float timeProgress)
+    private static float ResolveNightOverlayAlpha(float timeOfDaySeconds, float dayLengthSeconds)
     {
-        var cycle = (timeProgress - 0.25f) * MathF.PI * 2f;
-        var nightAmount = 0.5f - (0.5f * MathF.Cos(cycle));
-        return Math.Clamp(nightAmount * 0.34f, 0f, 0.34f);
+        var outdoorLight = LightingFieldSystem.ResolveOutdoorSkylightLevel(timeOfDaySeconds, dayLengthSeconds);
+        var darkness = 1f - Math.Clamp(outdoorLight, 0f, 1f);
+        return SmoothStep(darkness) * 0.24f;
+    }
+
+    private static float SmoothStep(float t)
+    {
+        var clamped = Math.Clamp(t, 0f, 1f);
+        return clamped * clamped * (3f - (2f * clamped));
     }
 }

@@ -2,8 +2,9 @@ using System.Numerics;
 using Downroot.Content.Packs;
 using Downroot.Content.Registries;
 using Downroot.Core.Content;
-using Downroot.Core.World;
+using Downroot.Core.Diagnostics;
 using Downroot.Core.Save;
+using Downroot.Core.World;
 using Downroot.Gameplay.Persistence;
 using Downroot.Gameplay.Runtime;
 using Downroot.World.Generation;
@@ -14,6 +15,12 @@ namespace Downroot.Gameplay.Bootstrap;
 public sealed class GameBootstrapper
 {
     private readonly ContentPackResolver _packResolver = new();
+    private readonly IDiagnosticLogger _logger;
+
+    public GameBootstrapper(IDiagnosticLogger? logger = null)
+    {
+        _logger = logger ?? NullDiagnosticLogger.Instance;
+    }
 
     public GameRuntime Bootstrap()
     {
@@ -63,7 +70,7 @@ public sealed class GameBootstrapper
 
         var runtime = new GameRuntime(
             registries,
-            CreateGenerator(registries, WorldSpaceKind.Overworld),
+            CreateGenerator(registries, WorldSpaceKind.Overworld, _logger),
             worldState,
             player,
             bootstrapConfig)
@@ -119,7 +126,7 @@ public sealed class GameBootstrapper
                 chunk.AddNaturalEntity(new WorldEntityState(
                     WorldEntityKind.ResourceNode,
                     resourceDef!.Id,
-                    runtime.GetWorldPosition(spawn.Tile),
+                    runtime.GetWorldPosition(spawn),
                     resourceDef.MaxDurability,
                     generatedChunk.WorldSpaceKind,
                     generatedChunk.Coord,
@@ -133,7 +140,7 @@ public sealed class GameBootstrapper
                 chunk.AddNaturalEntity(new WorldEntityState(
                     WorldEntityKind.Creature,
                     creatureDef!.Id,
-                    runtime.GetWorldPosition(spawn.Tile),
+                    runtime.GetWorldPosition(spawn),
                     creatureDef.MaxHealth,
                     generatedChunk.WorldSpaceKind,
                     generatedChunk.Coord,
@@ -147,7 +154,7 @@ public sealed class GameBootstrapper
                 chunk.AddNaturalEntity(new WorldEntityState(
                     WorldEntityKind.Placeable,
                     placeableDef!.Id,
-                    runtime.GetWorldPosition(spawn.Tile),
+                    runtime.GetWorldPosition(spawn),
                     placeableDef.MaxDurability,
                     generatedChunk.WorldSpaceKind,
                     generatedChunk.Coord,
@@ -164,7 +171,7 @@ public sealed class GameBootstrapper
                 chunk.AddNaturalEntity(new WorldEntityState(
                     WorldEntityKind.ItemDrop,
                     itemDef!.Id,
-                    runtime.GetWorldPosition(spawn.Tile),
+                    runtime.GetWorldPosition(spawn),
                     1,
                     generatedChunk.WorldSpaceKind,
                     generatedChunk.Coord,
@@ -199,14 +206,15 @@ public sealed class GameBootstrapper
         return $"dimshard:{overworldSeed}:{portalChunk.X},{portalChunk.Y}";
     }
 
-    internal static WorldGenerator CreateGenerator(ContentRegistrySet registries, WorldSpaceKind worldSpaceKind)
+    internal static WorldGenerator CreateGenerator(ContentRegistrySet registries, WorldSpaceKind worldSpaceKind, IDiagnosticLogger? logger = null)
     {
         return new WorldGenerator(
             registries,
             registries.WorldGenPasses
                 .Where(pass => pass.WorldSpaceKind is null || pass.WorldSpaceKind == worldSpaceKind)
                 .Select(pass => WorldGenPassFactory.Create(registries, pass))
-                .ToArray());
+                .ToArray(),
+            logger ?? NullDiagnosticLogger.Instance);
     }
 
     private static void LoadInitialChunks(GameRuntime runtime, LoadedWorldState world, ChunkCoord centerChunk)
@@ -246,11 +254,9 @@ public sealed class GameBootstrapper
         });
     }
 
-    private static void LogLoadedWorld(LoadedWorldState world)
+    private void LogLoadedWorld(LoadedWorldState world)
     {
         var chunkSummary = string.Join(", ", world.LoadedChunks.Keys.OrderBy(coord => coord.Y).ThenBy(coord => coord.X).Select(coord => $"({coord.X},{coord.Y})"));
-        Console.WriteLine($"[WorldGen] loaded {world.WorldSpaceKind} chunks => {chunkSummary}");
+        _logger.Log($"[WorldGen] loaded {world.WorldSpaceKind} chunks => {chunkSummary}");
     }
-
-
 }

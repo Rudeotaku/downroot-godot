@@ -1,23 +1,32 @@
 using Downroot.Core.World;
 using Downroot.Core.Diagnostics;
 using Downroot.Gameplay.Bootstrap;
+using System.Threading.Tasks;
 
 namespace Downroot.Gameplay.Runtime.Systems;
 
 public sealed class WorldStreamingSystem(GameRuntime runtime, WorldRuntimeFacade worldFacade)
 {
+    private const int NearChunkCommitBudgetPerTick = 3;
+    private const int FarChunkCommitBudgetPerTick = 1;
+
+    private readonly Dictionary<PendingChunkLoadKey, PendingChunkLoad> _pendingChunkLoads = [];
+    private readonly Dictionary<WorldSpaceKind, HashSet<ChunkCoord>> _desiredChunksByWorld = [];
+    private readonly Dictionary<WorldSpaceKind, ChunkCoord> _desiredCentersByWorld = [];
+    private long _nextChunkLoadRequestId;
+
     public bool UpdateLoadedChunks()
     {
         using var scope = RuntimeProfiler.Measure("WorldStreaming.UpdateLoadedChunks");
         var world = worldFacade.GetActiveWorld();
         var centerChunk = worldFacade.GetChunkCoord(runtime.Player.Position);
-        return UpdateLoadedChunksForWorldCore(world, centerChunk);
+        return UpdateLoadedChunksForWorldCore(world, centerChunk, useAsyncGeneration: true);
     }
 
     public bool UpdateLoadedChunksForWorld(LoadedWorldState world, WorldTileCoord aroundTile)
     {
         using var scope = RuntimeProfiler.Measure("WorldStreaming.UpdateLoadedChunksForWorld");
-        return UpdateLoadedChunksForWorldCore(world, aroundTile.ToChunkCoord(runtime.ChunkWidth, runtime.ChunkHeight));
+        return UpdateLoadedChunksForWorldCore(world, aroundTile.ToChunkCoord(runtime.ChunkWidth, runtime.ChunkHeight), useAsyncGeneration: false);
     }
 
     public bool ReassignRuntimeEntities()
@@ -52,11 +61,10 @@ public sealed class WorldStreamingSystem(GameRuntime runtime, WorldRuntimeFacade
         return moved;
     }
 
-    private bool UpdateLoadedChunksForWorldCore(LoadedWorldState world, ChunkCoord centerChunk)
+    private bool UpdateLoadedChunksForWorldCore(LoadedWorldState world, ChunkCoord centerChunk, bool useAsyncGeneration)
     {
         using var scope = RuntimeProfiler.Measure("WorldStreaming.UpdateLoadedChunksCore");
         var desired = new HashSet<ChunkCoord>();
-        var changed = false;
 
         for (var y = centerChunk.Y - world.LoadRadius; y <= centerChunk.Y + world.LoadRadius; y++)
         {
@@ -69,16 +77,31 @@ public sealed class WorldStreamingSystem(GameRuntime runtime, WorldRuntimeFacade
                 }
 
                 desired.Add(coord);
-                if (world.LoadedChunks.ContainsKey(coord))
-                {
-                    continue;
-                }
-
-                var generated = worldFacade.GetGenerator(world)
-                    .GenerateChunk(world.WorldSpaceKind, world.WorldSeed, coord, runtime.ChunkWidth, runtime.ChunkHeight);
-                world.LoadChunk(generated, chunk => GameBootstrapper.CreateChunkRuntimeState(runtime, chunk));
-                changed = true;
             }
+        }
+
+        _desiredChunksByWorld[world.WorldSpaceKind] = desired;
+        _desiredCentersByWorld[world.WorldSpaceKind] = centerChunk;
+        var changed = EnsureCenterChunkLoaded(world, centerChunk, useAsyncGeneration);
+        changed |= ProcessCompletedChunkLoads();
+
+        foreach (var coord in desired.OrderBy(coord => GetChunkPriority(coord, centerChunk)).ThenBy(coord => coord.Y).ThenBy(coord => coord.X))
+        {
+            if (world.LoadedChunks.ContainsKey(coord))
+            {
+                continue;
+            }
+
+            if (useAsyncGeneration)
+            {
+                QueueChunkLoad(world, coord);
+                continue;
+            }
+
+            var generated = worldFacade.GetGenerator(world)
+                .GenerateChunk(world.WorldSpaceKind, world.WorldSeed, coord, runtime.ChunkWidth, runtime.ChunkHeight);
+            world.LoadChunk(generated, chunk => GameBootstrapper.CreateChunkRuntimeState(runtime, chunk));
+            changed = true;
         }
 
         foreach (var staleChunk in world.LoadedChunks.Keys.Where(coord => !desired.Contains(coord)).ToArray())
@@ -95,4 +118,142 @@ public sealed class WorldStreamingSystem(GameRuntime runtime, WorldRuntimeFacade
 
         return changed;
     }
+
+    private bool EnsureCenterChunkLoaded(LoadedWorldState world, ChunkCoord centerChunk, bool useAsyncGeneration)
+    {
+        if (!useAsyncGeneration || world.LoadedChunks.ContainsKey(centerChunk) || !world.ContainsChunk(centerChunk))
+        {
+            return false;
+        }
+
+        var key = new PendingChunkLoadKey(world.WorldSpaceKind, centerChunk);
+        if (_pendingChunkLoads.Remove(key))
+        {
+            RuntimeProfiler.Increment("WorldStreaming.CenterChunkPromoted");
+        }
+
+        using var scope = RuntimeProfiler.Measure("WorldStreaming.GenerateCenterChunkSync");
+        var generated = worldFacade.GetGenerator(world)
+            .GenerateChunk(world.WorldSpaceKind, world.WorldSeed, centerChunk, runtime.ChunkWidth, runtime.ChunkHeight);
+        world.LoadChunk(generated, chunk => GameBootstrapper.CreateChunkRuntimeState(runtime, chunk));
+        RuntimeProfiler.Increment("WorldStreaming.CenterChunkLoadedSync");
+        return true;
+    }
+
+    private void QueueChunkLoad(LoadedWorldState world, ChunkCoord coord)
+    {
+        var key = new PendingChunkLoadKey(world.WorldSpaceKind, coord);
+        if (_pendingChunkLoads.ContainsKey(key))
+        {
+            return;
+        }
+
+        var requestId = ++_nextChunkLoadRequestId;
+        RuntimeProfiler.Increment("WorldStreaming.ChunkLoadRequested");
+        _pendingChunkLoads[key] = new PendingChunkLoad(
+            requestId,
+            Task.Run(() =>
+            {
+                using var scope = RuntimeProfiler.Measure("WorldStreaming.GenerateChunkAsync");
+                var generated = worldFacade.GetGenerator(world)
+                    .GenerateChunk(world.WorldSpaceKind, world.WorldSeed, coord, runtime.ChunkWidth, runtime.ChunkHeight);
+                var runtimeChunk = GameBootstrapper.CreateChunkRuntimeState(runtime, generated);
+                return new ChunkLoadResult(world.WorldSpaceKind, coord, generated, runtimeChunk, requestId);
+            }));
+    }
+
+    private bool ProcessCompletedChunkLoads()
+    {
+        var changed = false;
+        var orderedCompletedLoads = _pendingChunkLoads
+            .Where(pair => pair.Value.Task.IsCompleted)
+            .OrderBy(pair => GetPendingChunkPriority(pair.Key))
+            .ThenBy(pair => pair.Key.Coord.Y)
+            .ThenBy(pair => pair.Key.Coord.X)
+            .ToArray();
+
+        var committedNear = 0;
+        var committedFar = 0;
+        foreach (var pair in orderedCompletedLoads)
+        {
+            _pendingChunkLoads.Remove(pair.Key);
+            var result = pair.Value.Task.GetAwaiter().GetResult();
+            var world = worldFacade.GetWorld(result.WorldSpaceKind);
+            if (!_desiredChunksByWorld.TryGetValue(result.WorldSpaceKind, out var desired)
+                || !desired.Contains(result.Coord)
+                || world.LoadedChunks.ContainsKey(result.Coord))
+            {
+                RuntimeProfiler.Increment("WorldStreaming.ChunkLoadDiscarded");
+                continue;
+            }
+
+            var priority = GetPendingChunkPriority(pair.Key);
+            if (priority <= 1)
+            {
+                if (committedNear >= NearChunkCommitBudgetPerTick)
+                {
+                    _pendingChunkLoads[pair.Key] = pair.Value;
+                    continue;
+                }
+            }
+            else if (committedFar >= FarChunkCommitBudgetPerTick)
+            {
+                _pendingChunkLoads[pair.Key] = pair.Value;
+                continue;
+            }
+
+            using (RuntimeProfiler.Measure("WorldStreaming.CommitChunkLoad"))
+            {
+                world.LoadChunk(result.GeneratedChunk, _ => result.RuntimeChunkState);
+            }
+
+            RuntimeProfiler.Increment("WorldStreaming.ChunkLoadCommitted");
+            if (result.WorldSpaceKind == runtime.ActiveWorldSpaceKind)
+            {
+                worldFacade.MarkEntityProjectionDirty();
+                worldFacade.NotifyLightingStructureChanged(result.WorldSpaceKind);
+            }
+
+            changed = true;
+            if (priority <= 1)
+            {
+                committedNear++;
+            }
+            else
+            {
+                committedFar++;
+            }
+        }
+
+        return changed;
+    }
+
+    private int GetPendingChunkPriority(PendingChunkLoadKey key)
+    {
+        return _desiredCentersByWorld.TryGetValue(key.WorldSpaceKind, out var center)
+            ? GetChunkPriority(key.Coord, center)
+            : int.MaxValue;
+    }
+
+    private static int GetChunkPriority(ChunkCoord coord, ChunkCoord center)
+    {
+        var dx = Math.Abs(coord.X - center.X);
+        var dy = Math.Abs(coord.Y - center.Y);
+        return Math.Max(dx, dy);
+    }
+
+    private readonly record struct PendingChunkLoadKey(
+        WorldSpaceKind WorldSpaceKind,
+        ChunkCoord Coord);
+
+    private sealed record PendingChunkLoad(
+        long RequestId,
+        Task<ChunkLoadResult> Task);
+
+    private sealed record ChunkLoadResult(
+        WorldSpaceKind WorldSpaceKind,
+        ChunkCoord Coord,
+        Downroot.World.Models.GeneratedChunk GeneratedChunk,
+        ChunkRuntimeState RuntimeChunkState,
+        long RequestId);
 }
