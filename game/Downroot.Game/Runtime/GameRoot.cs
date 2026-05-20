@@ -1,6 +1,7 @@
 using Downroot.Core.Ids;
 using Downroot.Core.Input;
 using Downroot.Core.Diagnostics;
+using Downroot.Core.World;
 using Downroot.Game.Infrastructure;
 using Downroot.Gameplay.Runtime;
 using Godot;
@@ -29,6 +30,9 @@ public partial class GameRoot : Node2D
     private bool _initialized;
     private bool _previousDebugToggleHeld;
     private bool _previousManualSaveHeld;
+    private BgMusicController? _bgm;
+    private bool _lastIsNight;
+    private WorldSpaceKind _lastWorldSpaceKind = WorldSpaceKind.Overworld;
 
     public GameRuntime Runtime => _runtime ?? throw new InvalidOperationException("GameRoot has not been configured.");
     public GameSimulation Simulation => _simulation ?? throw new InvalidOperationException("GameRoot has not been configured.");
@@ -100,6 +104,14 @@ public partial class GameRoot : Node2D
             _hudController.Refresh(_runtime, _worldRenderer.WorldToScreen);
             _startupOverlay.Hide();
             _initialized = true;
+
+            _bgm = GetTree().Root.GetNodeOrNull<BgMusicController>("BgMusicController");
+            if (_bgm is not null)
+            {
+                _lastIsNight = _runtime.WorldState.IsNight(_runtime.BootstrapConfig.DayLengthSeconds);
+                _bgm.PlayOverworldBgm(_lastIsNight);
+                _lastWorldSpaceKind = _runtime.WorldState.ActiveWorldSpaceKind;
+            }
         }
         catch (Exception exception)
         {
@@ -161,8 +173,40 @@ public partial class GameRoot : Node2D
         RuntimeProfiler.EndFrame();
     }
 
+    public override void _Process(double delta)
+    {
+        if (_runtime is null || _bgm is null)
+        {
+            return;
+        }
+
+        // Day/night crossfade detection
+        var isNight = _runtime.WorldState.IsNight(_runtime.BootstrapConfig.DayLengthSeconds);
+        if (isNight != _lastIsNight)
+        {
+            _bgm.CrossfadeTo(isNight ? BgMusicController.BgmState.OverworldNight : BgMusicController.BgmState.OverworldDay);
+            _lastIsNight = isNight;
+        }
+
+        // World space kind hard-cut detection (portal travel)
+        var worldKind = _runtime.WorldState.ActiveWorldSpaceKind;
+        if (worldKind != _lastWorldSpaceKind)
+        {
+            _lastWorldSpaceKind = worldKind;
+            if (worldKind == WorldSpaceKind.DimShardPocket)
+            {
+                _bgm.HardCutTo(BgMusicController.BgmState.PocketWorld);
+            }
+            else
+            {
+                _bgm.PlayOverworldBgm(isNight);
+            }
+        }
+    }
+
     public override void _ExitTree()
     {
+        _bgm?.Stop();
         RuntimeProfiler.FlushNow();
     }
 

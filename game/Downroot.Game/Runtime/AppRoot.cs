@@ -138,6 +138,9 @@ public partial class AppRoot : Control
             VersionLabel = $"v{ProjectSettings.GetSetting("application/config/version", "0.4")}"
         });
         ShowPage(_mainMenu.View);
+
+        var bgm = GetTree().Root.GetNodeOrNull<BgMusicController>("BgMusicController");
+        bgm?.PlayMainMenuBgm();
     }
 
     private void ShowPauseMenu()
