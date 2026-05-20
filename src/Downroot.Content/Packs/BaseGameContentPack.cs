@@ -104,7 +104,7 @@ public sealed class BaseGameContentPack : IContentPack
         registrar.RegisterTerrain(new TerrainDef(riverWaterId, "River Water", PackId, "packs/basegame/assets/world/terrain/ground/water_dualgrid.png", 32, 32, 2, 1));
 
         registrar.RegisterPlaceable(new PlaceableDef(furnacePlaceableId, "Furnace", PackId, "packs/basegame/assets/production/utility/furnace.png", 32, 32, 0, 0, 5, true, CraftingStationKind.Furnace, true, Behaviors: PlaceableBehaviorKind.CraftingStation));
-        registrar.RegisterPlaceable(new PlaceableDef(stoneWallPlaceableId, "Stone Wall", PackId, "packs/basegame/assets/structures/walls/stone_wall.png", 32, 32, 0, 0, 5, false, null, true, LightOccluder: new LightOccluderDef(true, LightingFootprintKind.Tile)));
+        registrar.RegisterPlaceable(new PlaceableDef(stoneWallPlaceableId, "Stone Wall", PackId, "packs/basegame/assets/structures/walls/stone_wall_single.png", 32, 32, MaxDurability: 5, BlocksMovement: true, ConnectsToSameNeighbors: true, LightOccluder: new LightOccluderDef(true, LightingFootprintKind.Tile)));
         registrar.RegisterPlaceable(new PlaceableDef(stoneFloorPlaceableId, "Stone Floor", PackId, "packs/basegame/assets/world/terrain/floors/stone_floor.png", 32, 32, 0, 0, 2, false, null, false, false, 0, 0, false, true));
         registrar.RegisterPlaceable(new PlaceableDef(workbenchPlaceableId, "Workbench", PackId, "packs/basegame/assets/production/workstations/workbench.png", 28, 32, 0, 0, 3, true, CraftingStationKind.Workbench, true, Behaviors: PlaceableBehaviorKind.CraftingStation));
         registrar.RegisterPlaceable(new PlaceableDef(
@@ -194,7 +194,7 @@ public sealed class BaseGameContentPack : IContentPack
             1,
             UseBehavior: ItemUseBehaviorKind.ThrowableWeapon,
             ThrowableWeapon: new ThrowableWeaponDef(3, 176f, 6, woodSpearItemId, true)));
-        registrar.RegisterItem(new ItemDef(stoneWallItemId, "Stone Wall", PackId, "packs/basegame/assets/structures/walls/stone_wall.png", 32, 32, 32, stoneWallPlaceableId));
+        registrar.RegisterItem(new ItemDef(stoneWallItemId, "Stone Wall", PackId, "packs/basegame/assets/structures/walls/stone_wall_single.png", 32, 32, 32, stoneWallPlaceableId));
         registrar.RegisterItem(new ItemDef(stoneFloorItemId, "Stone Floor", PackId, "packs/basegame/assets/world/terrain/floors/stone_floor.png", 32, 32, 64, stoneFloorPlaceableId));
         registrar.RegisterItem(new ItemDef(workbenchItemId, "Workbench", PackId, "packs/basegame/assets/production/workstations/workbench.png", 28, 32, 8, workbenchPlaceableId));
         registrar.RegisterItem(new ItemDef(torchItemId, "Torch", PackId, "packs/basegame/assets/items/torch.png", 16, 16, 16, torchPlaceableId));
